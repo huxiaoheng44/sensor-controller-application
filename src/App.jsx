@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useMQTT } from './hooks/useMQTT'
+import { useDeviceConfig } from './hooks/useDeviceConfig'
 import DistanceChart from './components/DistanceChart'
 import './App.css'
 
@@ -18,6 +20,7 @@ export default function App() {
     frequency,
     eventTimes,
     lastDataTime,
+    deviceHealth,
     calibration,
     publish,
     resetCounter,
@@ -25,92 +28,44 @@ export default function App() {
     resetCalibration,
   } = useMQTT()
 
-  const [config, setConfig] = useState({
-    running:        true,
-    baseline:       80,
-    sensitivity:    10,
-    sampleHz:       8,
-    dropThreshold:  3,
-    riseThreshold:  2,
-    debounceMs:     500,
-  })
+  const { config, sendConfig } = useDeviceConfig(latestData, calibration, publish)
+
   const [tick, setTick] = useState(0)
   const [frozenHistory, setFrozenHistory] = useState(null)
   const prevRunningRef = useRef(true)
-  const lastPublishRef = useRef(null)
 
-  // 1-second ticker to update "last seen" display
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [])
 
-  // Freeze / unfreeze chart when running state changes
   useEffect(() => {
     if (prevRunningRef.current && !config.running) {
-      // just stopped → snapshot current history
       setFrozenHistory([...distanceHistory])
     } else if (!prevRunningRef.current && config.running) {
-      // just started → release snapshot
       setFrozenHistory(null)
     }
     prevRunningRef.current = config.running
   }, [config.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync displayed config when ESP32 reports different values
-  useEffect(() => {
-    if (!latestData) return
-    setConfig((prev) => ({
-      ...prev,
-      baseline:      latestData.baseline      ?? prev.baseline,
-      sensitivity:   latestData.sensitivity   ?? prev.sensitivity,
-      sampleHz:      latestData.sampleHz      ?? prev.sampleHz,
-      dropThreshold: latestData.dropThreshold ?? prev.dropThreshold,
-      riseThreshold: latestData.riseThreshold ?? prev.riseThreshold,
-    }))
-  }, [
-    latestData?.baseline,
-    latestData?.sensitivity,
-    latestData?.sampleHz,
-    latestData?.dropThreshold,
-    latestData?.riseThreshold,
-  ])
-
-  // When calibration completes, update local baseline to match
-  useEffect(() => {
-    if (calibration.status === 'done' && calibration.baseline != null) {
-      setConfig((prev) => ({ ...prev, baseline: calibration.baseline }))
-    }
-  }, [calibration.status, calibration.baseline])
-
-  function sendConfig(next) {
-    setConfig(next)
-    publish(next)
-    lastPublishRef.current = Date.now()
-  }
-
   function toggleRunning() {
     sendConfig({ ...config, running: !config.running })
   }
 
-  function handleBaseline(e) {
-    sendConfig({ ...config, baseline: parseFloat(e.target.value) })
+  function handleEnterThreshold(e) {
+    sendConfig({ ...config, enterThreshold: parseFloat(e.target.value) })
   }
 
-  function handleSensitivity(e) {
-    sendConfig({ ...config, sensitivity: parseFloat(e.target.value) })
+  function handleExitThreshold(e) {
+    sendConfig({ ...config, exitThreshold: parseFloat(e.target.value) })
+  }
+
+  function handleStableSamples(e) {
+    sendConfig({ ...config, stableSamples: parseInt(e.target.value, 10) })
   }
 
   function handleSampleHz(e) {
     sendConfig({ ...config, sampleHz: parseFloat(e.target.value) })
-  }
-
-  function handleDropThreshold(e) {
-    sendConfig({ ...config, dropThreshold: parseFloat(e.target.value) })
-  }
-
-  function handleRiseThreshold(e) {
-    sendConfig({ ...config, riseThreshold: parseFloat(e.target.value) })
   }
 
   function handleDebounce(e) {
@@ -119,16 +74,22 @@ export default function App() {
 
   const distance    = latestData?.distance      ?? null
   const isBlocking  = latestData?.objectBlocking ?? false
-  const diff        = latestData?.diff           ?? null
   const staleSecs   = lastDataTime ? Math.floor((Date.now() - lastDataTime) / 1000) : null
   const isStale     = staleSecs !== null && staleSecs > 5
 
-  // Chart data: frozen snapshot when stopped, live otherwise
   const chartData = frozenHistory ?? distanceHistory
 
-  // Connection status label + color
   const connLabel = connected ? 'MQTT Connected' : connecting ? 'Connecting...' : 'MQTT Disconnected'
   const connColor = connected ? '#22c55e' : connecting ? '#f59e0b' : '#ef4444'
+  const healthAgeSecs = deviceHealth.ageMs != null ? Math.floor(deviceHealth.ageMs / 1000) : null
+
+  const healthMeta = {
+    online: { label: 'Device Online', color: '#22c55e' },
+    degraded: { label: 'Heartbeat Delayed', color: '#f59e0b' },
+    device_offline: { label: 'Device Offline', color: '#ef4444' },
+    broker_offline: { label: 'Broker Offline', color: '#ef4444' },
+    waiting: { label: 'Waiting Heartbeat', color: '#64748b' },
+  }[deviceHealth.status]
 
   return (
     <div className="app">
@@ -147,6 +108,11 @@ export default function App() {
             <span className="conn-dot" />
             <span>{connLabel}</span>
           </div>
+          <div className="health-badge" style={{ '--health-color': healthMeta.color }}>
+            <span className="health-dot" />
+            <span>{healthMeta.label}</span>
+            {healthAgeSecs != null && <span className="health-age">{healthAgeSecs}s</span>}
+          </div>
           {lastDataTime && (
             <div className="last-data">
               Last data&nbsp;
@@ -154,6 +120,10 @@ export default function App() {
               {isStale && <span className="stale-tag">&nbsp;({staleSecs}s ago)</span>}
             </div>
           )}
+          <Link to="/tablet" className="mode-switch-btn">
+            <TabletIcon />
+            Tablet
+          </Link>
         </div>
       </header>
 
@@ -167,14 +137,7 @@ export default function App() {
             <div className={`distance-number${isBlocking ? ' distance-blocking' : ''}`}>
               {distance != null ? distance.toFixed(1) : '—'}
             </div>
-            <div className="metric-unit">
-              cm
-              {diff != null && (
-                <span className={`diff-badge${diff > 0 ? ' diff-positive' : diff < 0 ? ' diff-negative' : ''}`}>
-                  Δ{diff > 0 ? '+' : ''}{diff}
-                </span>
-              )}
-            </div>
+            <div className="metric-unit">cm</div>
             {isBlocking && (
               <div className="blocking-pill">
                 <span className="pulse-dot pulse-dot--orange" />
@@ -213,12 +176,12 @@ export default function App() {
               <span className="param-val">{config.sampleHz} Hz</span>
             </div>
             <div className="param-row">
-              <span className="param-key">Baseline</span>
-              <span className="param-val">{config.baseline} cm</span>
+              <span className="param-key">Enter / Exit</span>
+              <span className="param-val">{config.enterThreshold} / {config.exitThreshold} cm</span>
             </div>
             <div className="param-row">
-              <span className="param-key">Drop / Rise</span>
-              <span className="param-val">{config.dropThreshold} / {config.riseThreshold} cm</span>
+              <span className="param-key">Stable Samples</span>
+              <span className="param-val">{config.stableSamples}</span>
             </div>
             <div className="param-row">
               <span className="param-key">Debounce</span>
@@ -237,12 +200,18 @@ export default function App() {
             </span>
             <div className="chart-legend">
               <span><span style={{ color: '#22d3ee' }}>——</span>&ensp;Distance</span>
-              <span><span style={{ color: '#f59e0b' }}>- -</span>&ensp;Baseline</span>
+              <span><span style={{ color: '#f97316' }}>- -</span>&ensp;Enter</span>
+              <span><span style={{ color: '#22c55e' }}>- -</span>&ensp;Exit</span>
               <span><span style={{ background: '#f9731630', border: '1px solid #f9731660', display:'inline-block', width:12, height:10, borderRadius:2 }} />&ensp;Blocking</span>
               <span><span style={{ color: '#ef4444' }}>|</span>&ensp;Count</span>
             </div>
           </div>
-          <DistanceChart data={chartData} eventTimes={eventTimes} />
+          <DistanceChart
+            data={chartData}
+            eventTimes={eventTimes}
+            enterThreshold={config.enterThreshold}
+            exitThreshold={config.exitThreshold}
+          />
         </div>
 
         {/* ── Control Panel ── */}
@@ -281,53 +250,7 @@ export default function App() {
               </p>
             </div>
 
-            {/* Baseline */}
-            <div className="control-group">
-              <label className="control-label">
-                Baseline Distance
-                <span className="control-val">{config.baseline} cm</span>
-              </label>
-              <input
-                type="range"
-                min={10}
-                max={200}
-                step={0.5}
-                value={config.baseline}
-                onChange={handleBaseline}
-                disabled={!connected}
-                className="slider"
-              />
-              <div className="slider-marks">
-                <span>10 cm</span>
-                <span>200 cm</span>
-              </div>
-              <p className="control-hint">Empty conveyor distance from sensor</p>
-            </div>
-
-            {/* Sensitivity */}
-            <div className="control-group">
-              <label className="control-label">
-                Sensitivity
-                <span className="control-val">{config.sensitivity} cm</span>
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={50}
-                step={0.5}
-                value={config.sensitivity}
-                onChange={handleSensitivity}
-                disabled={!connected}
-                className="slider"
-              />
-              <div className="slider-marks">
-                <span>1 cm (high)</span>
-                <span>50 cm (low)</span>
-              </div>
-              <p className="control-hint">Triggers when distance drops by this amount</p>
-            </div>
-
-            {/* ── Calibration ── */}
+            {/* Calibration */}
             <div className="control-group control-calib">
               <label className="control-label">Calibration</label>
               <button
@@ -342,14 +265,73 @@ export default function App() {
               </button>
               <CalibStatus calibration={calibration} onDismiss={resetCalibration} />
               <p className="control-hint">
-                Clear sensor path before triggering.
-                Takes ~2 s (20 samples).
+                Clear sensor path before triggering. Resets state machine.
               </p>
             </div>
 
             {/* ── Section divider ── */}
             <div className="controls-divider">
-              <span>Detection Algorithm</span>
+              <span>Detection Thresholds</span>
+            </div>
+
+            {/* Enter Threshold */}
+            <div className="control-group">
+              <label className="control-label">
+                Enter Threshold
+                <span className="control-val control-val--alt">{config.enterThreshold} cm</span>
+              </label>
+              <input
+                type="range" min={5} max={200} step={0.5}
+                value={config.enterThreshold}
+                onChange={handleEnterThreshold}
+                disabled={!connected}
+                className="slider slider--alt"
+              />
+              <div className="slider-marks">
+                <span>5 cm</span>
+                <span>200 cm</span>
+              </div>
+              <p className="control-hint">Object detected when dist &lt; this value</p>
+            </div>
+
+            {/* Exit Threshold */}
+            <div className="control-group">
+              <label className="control-label">
+                Exit Threshold
+                <span className="control-val control-val--alt">{config.exitThreshold} cm</span>
+              </label>
+              <input
+                type="range" min={5} max={200} step={0.5}
+                value={config.exitThreshold}
+                onChange={handleExitThreshold}
+                disabled={!connected}
+                className="slider slider--alt"
+              />
+              <div className="slider-marks">
+                <span>5 cm</span>
+                <span>200 cm</span>
+              </div>
+              <p className="control-hint">Count triggers when dist &gt; this value (must be &gt; Enter)</p>
+            </div>
+
+            {/* Stable Samples */}
+            <div className="control-group">
+              <label className="control-label">
+                Stable Samples
+                <span className="control-val control-val--alt">{config.stableSamples}</span>
+              </label>
+              <input
+                type="range" min={1} max={10} step={1}
+                value={config.stableSamples}
+                onChange={handleStableSamples}
+                disabled={!connected}
+                className="slider slider--alt"
+              />
+              <div className="slider-marks">
+                <span>1</span>
+                <span>10</span>
+              </div>
+              <p className="control-hint">Consecutive readings required to change state</p>
             </div>
 
             {/* Sample Rate */}
@@ -370,46 +352,6 @@ export default function App() {
                 <span>20 Hz</span>
               </div>
               <p className="control-hint">Sensor readings per second</p>
-            </div>
-
-            {/* Drop Threshold */}
-            <div className="control-group">
-              <label className="control-label">
-                Drop Threshold
-                <span className="control-val control-val--alt">{config.dropThreshold} cm</span>
-              </label>
-              <input
-                type="range" min={0.5} max={20} step={0.5}
-                value={config.dropThreshold}
-                onChange={handleDropThreshold}
-                disabled={!connected}
-                className="slider slider--alt"
-              />
-              <div className="slider-marks">
-                <span>0.5 cm</span>
-                <span>20 cm</span>
-              </div>
-              <p className="control-hint">Min drop per sample to start tracking</p>
-            </div>
-
-            {/* Rise Threshold */}
-            <div className="control-group">
-              <label className="control-label">
-                Rise Threshold
-                <span className="control-val control-val--alt">{config.riseThreshold} cm</span>
-              </label>
-              <input
-                type="range" min={0.5} max={20} step={0.5}
-                value={config.riseThreshold}
-                onChange={handleRiseThreshold}
-                disabled={!connected}
-                className="slider slider--alt"
-              />
-              <div className="slider-marks">
-                <span>0.5 cm</span>
-                <span>20 cm</span>
-              </div>
-              <p className="control-hint">Rise above min-distance to confirm count</p>
             </div>
 
             {/* Debounce */}
@@ -441,6 +383,15 @@ export default function App() {
         ESP32 + HC-SR04
       </footer>
     </div>
+  )
+}
+
+function TabletIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" width="15" height="15">
+      <rect x="2" y="3" width="16" height="14" rx="2" />
+      <circle cx="10" cy="14.5" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
   )
 }
 
@@ -482,7 +433,6 @@ function SpinnerIcon() {
   )
 }
 
-// Calibration status badge shown beneath the button
 function CalibStatus({ calibration, onDismiss }) {
   const { status, baseline, ts } = calibration
 
@@ -494,7 +444,7 @@ function CalibStatus({ calibration, onDismiss }) {
         <div className="calib-bar-track">
           <div className="calib-bar-fill" />
         </div>
-        <span>Measuring 20 samples…</span>
+        <span>Resetting state machine…</span>
       </div>
     )
   }
@@ -504,8 +454,9 @@ function CalibStatus({ calibration, onDismiss }) {
       <div className="calib-status calib-status--done">
         <span className="calib-icon">✓</span>
         <span>
-          Done — new baseline&nbsp;
-          <strong>{baseline?.toFixed(1)} cm</strong>
+          {baseline != null
+            ? <>Done — new baseline&nbsp;<strong>{baseline.toFixed(1)} cm</strong></>
+            : 'Done — state machine reset'}
         </span>
         <button className="calib-dismiss" onClick={onDismiss} title="Dismiss">×</button>
       </div>

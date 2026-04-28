@@ -14,7 +14,6 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false })
 }
 
-// Build contiguous blocking zones from the data array
 function getBlockingRanges(data) {
   const ranges = []
   let start = null
@@ -53,23 +52,7 @@ function ChartTooltip({ active, payload, label }) {
         <span style={{ color: '#22d3ee', fontWeight: 700, fontFamily: 'monospace' }}>
           {d?.distance ?? '—'} cm
         </span>
-        {d?.diff != null && (
-          <span style={{
-            marginLeft: 8,
-            color: d.diff > 0 ? '#f97316' : '#94a3b8',
-            fontSize: 11,
-            fontFamily: 'monospace',
-          }}>
-            Δ{d.diff > 0 ? '+' : ''}{d.diff}
-          </span>
-        )}
       </div>
-
-      {d?.baseline != null && (
-        <div style={{ color: '#94a3b8', marginTop: 2 }}>
-          Baseline:&nbsp;<span style={{ color: '#f59e0b' }}>{d.baseline} cm</span>
-        </div>
-      )}
 
       {d?.objectBlocking && (
         <>
@@ -87,7 +70,13 @@ function ChartTooltip({ active, payload, label }) {
   )
 }
 
-export default function DistanceChart({ data, eventTimes = [] }) {
+export default function DistanceChart({
+  data,
+  eventTimes = [],
+  height = 280,
+  enterThreshold,
+  exitThreshold,
+}) {
   const xTicks =
     data.length >= 2
       ? [data[0].time, data[data.length - 1].time]
@@ -98,7 +87,7 @@ export default function DistanceChart({ data, eventTimes = [] }) {
   if (data.length === 0) {
     return (
       <div style={{
-        height: 280,
+        height,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -115,24 +104,22 @@ export default function DistanceChart({ data, eventTimes = [] }) {
     )
   }
 
-  const baseline = data[data.length - 1]?.baseline
   const distances = data.map((d) => d.distance).filter((v) => v != null)
-  const minD = Math.max(0, Math.min(...distances) - 15)
+  const minD = Math.max(0, Math.min(...distances) - 10)
   const maxD = Math.max(
     ...distances,
-    baseline != null ? baseline + 20 : 0,
-    minD + 30
+    exitThreshold != null ? exitThreshold + 10 : 0,
+    minD + 50,
   )
 
   const blockingRanges = getBlockingRanges(data)
 
-  // Event lines: only those within the current time window
   const windowStart = data[0].time
   const windowEnd   = data[data.length - 1].time
   const visibleEvents = eventTimes.filter((t) => t >= windowStart && t <= windowEnd)
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 12, right: 24, left: 0, bottom: 4 }}>
         <CartesianGrid strokeDasharray="4 4" stroke="#1a2234" vertical={false} />
 
@@ -158,7 +145,7 @@ export default function DistanceChart({ data, eventTimes = [] }) {
 
         <Tooltip content={<ChartTooltip />} />
 
-        {/* Blocking zones — orange shaded areas */}
+        {/* Blocking zones */}
         {blockingRanges.map((r, i) => (
           <ReferenceArea
             key={`block-${i}`}
@@ -170,17 +157,17 @@ export default function DistanceChart({ data, eventTimes = [] }) {
           />
         ))}
 
-        {/* Baseline reference line */}
-        {baseline != null && (
+        {/* Enter threshold — object detected below this */}
+        {enterThreshold != null && (
           <ReferenceLine
-            y={baseline}
-            stroke="#f59e0b"
+            y={enterThreshold}
+            stroke="#f97316"
             strokeDasharray="7 4"
             strokeWidth={1.5}
             label={{
-              value: `Baseline ${baseline}cm`,
+              value: `Enter ${enterThreshold}cm`,
               position: 'insideTopRight',
-              fill: '#f59e0b',
+              fill: '#f97316',
               fontSize: 11,
               dx: -4,
               dy: 4,
@@ -188,7 +175,25 @@ export default function DistanceChart({ data, eventTimes = [] }) {
           />
         )}
 
-        {/* Count events — vertical red dashed lines */}
+        {/* Exit threshold — count triggers when rising above this */}
+        {exitThreshold != null && (
+          <ReferenceLine
+            y={exitThreshold}
+            stroke="#22c55e"
+            strokeDasharray="7 4"
+            strokeWidth={1.5}
+            label={{
+              value: `Exit ${exitThreshold}cm`,
+              position: 'insideTopRight',
+              fill: '#22c55e',
+              fontSize: 11,
+              dx: -4,
+              dy: 4,
+            }}
+          />
+        )}
+
+        {/* Count events */}
         {visibleEvents.map((t) => (
           <ReferenceLine
             key={`evt-${t}`}

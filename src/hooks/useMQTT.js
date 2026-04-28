@@ -6,8 +6,11 @@ const TOPIC_DISTANCE = 'factory/line1/distance'
 const TOPIC_EVENT    = 'factory/line1/event'
 const TOPIC_CONFIG   = 'factory/line1/config'
 const TOPIC_STATUS   = 'factory/line1/status'
+const TOPIC_HEALTH   = 'factory/line1/health'
 const WINDOW_MS = 60_000
 const CALIB_TIMEOUT_MS = 15_000   // give up after 15s if no status reply
+const HEALTH_OK_MS = 10_000
+const HEALTH_STALE_MS = 30_000
 
 const CALIB_IDLE        = 'idle'
 const CALIB_IN_PROGRESS = 'in_progress'
@@ -28,6 +31,17 @@ export function useMQTT() {
     status: CALIB_IDLE,
     baseline: null,   // new baseline received from ESP32
     ts: null,         // timestamp when done/timeout occurred
+  })
+
+  const [deviceHealth, setDeviceHealth] = useState({
+    lastHeartbeat: null,
+    onlineFlag: null,
+    source: 'none',
+    rssi: null,
+    freeHeap: null,
+    uptimeSec: null,
+    fwVersion: null,
+    reason: null,
   })
 
   const clientRef      = useRef(null)
@@ -58,7 +72,7 @@ export function useMQTT() {
       setConnected(true)
       setConnecting(false)
       client.subscribe(
-        [TOPIC_DISTANCE, TOPIC_EVENT, TOPIC_STATUS],
+        [TOPIC_DISTANCE, TOPIC_EVENT, TOPIC_STATUS, TOPIC_HEALTH],
         { qos: 0 },
         (err) => { if (err) console.error('Subscribe error:', err) }
       )
@@ -70,10 +84,26 @@ export function useMQTT() {
 
     client.on('message', (topic, payload) => {
       const now = Date.now()
+      const raw = payload.toString()
+      let data = raw
       try {
-        const data = JSON.parse(payload.toString())
+        data = JSON.parse(raw)
+      } catch {
+        data = raw
+      }
 
+      const markHeartbeat = (source, patch = {}) => {
+        setDeviceHealth((prev) => ({
+          ...prev,
+          ...patch,
+          source,
+          lastHeartbeat: now,
+        }))
+      }
+
+      try {
         if (topic === TOPIC_DISTANCE) {
+          markHeartbeat('distance', { onlineFlag: true })
           setLastDataTime(now)
           setLatestData(data)
           setDistanceHistory((prev) => {
@@ -98,6 +128,7 @@ export function useMQTT() {
           })
 
         } else if (topic === TOPIC_EVENT) {
+          markHeartbeat('event', { onlineFlag: true })
           if (data.detected) {
             setCounter((c) => c + 1)
             setEventTimes((prev) => {
@@ -107,6 +138,7 @@ export function useMQTT() {
           }
 
         } else if (topic === TOPIC_STATUS) {
+          markHeartbeat('status', { onlineFlag: true })
           // ESP32 publishes here after calibration completes.
           // Expected payload: { "baseline": 82.3 }  (plus any other fields)
           // Also handle { "calibrating": true } if device sends an in-progress ping.
@@ -117,10 +149,33 @@ export function useMQTT() {
               setCalibration({ status: CALIB_TIMEOUT, baseline: null, ts: Date.now() })
             }, CALIB_TIMEOUT_MS)
           } else if (typeof data.baseline === 'number') {
-            // Calibration complete
+            // Calibration complete (legacy firmware with baseline)
             clearCalibTimer()
             setCalibration({ status: CALIB_DONE, baseline: data.baseline, ts: now })
+          } else if (data.reset === true || data.done === true) {
+            // New firmware: calibration resets state machine, no baseline returned
+            clearCalibTimer()
+            setCalibration({ status: CALIB_DONE, baseline: null, ts: now })
           }
+
+        } else if (topic === TOPIC_HEALTH) {
+          const patch = {}
+
+          if (typeof data === 'object' && data !== null) {
+            if (typeof data.online === 'boolean') patch.onlineFlag = data.online
+            if (typeof data.rssi === 'number') patch.rssi = data.rssi
+            if (typeof data.freeHeap === 'number') patch.freeHeap = data.freeHeap
+            if (typeof data.uptimeSec === 'number') patch.uptimeSec = data.uptimeSec
+            if (typeof data.fwVersion === 'string') patch.fwVersion = data.fwVersion
+            if (typeof data.reason === 'string') patch.reason = data.reason
+          } else if (typeof data === 'string') {
+            const normalized = data.trim().toLowerCase()
+            if (normalized === 'online') patch.onlineFlag = true
+            if (normalized === 'offline') patch.onlineFlag = false
+            if (normalized) patch.reason = data.trim()
+          }
+
+          markHeartbeat('health', patch)
         }
       } catch (e) {
         console.error('MQTT parse error:', e)
@@ -166,6 +221,22 @@ export function useMQTT() {
 
   const now = Date.now()
   const frequency = eventTimes.filter((t) => now - t < WINDOW_MS).length
+  const heartbeatAgeMs = deviceHealth.lastHeartbeat ? now - deviceHealth.lastHeartbeat : null
+
+  let healthStatus = 'waiting'
+  if (!connected) {
+    healthStatus = 'broker_offline'
+  } else if (deviceHealth.onlineFlag === false) {
+    healthStatus = 'device_offline'
+  } else if (heartbeatAgeMs == null) {
+    healthStatus = 'waiting'
+  } else if (heartbeatAgeMs <= HEALTH_OK_MS) {
+    healthStatus = 'online'
+  } else if (heartbeatAgeMs <= HEALTH_STALE_MS) {
+    healthStatus = 'degraded'
+  } else {
+    healthStatus = 'device_offline'
+  }
 
   return {
     connected,
@@ -176,6 +247,11 @@ export function useMQTT() {
     frequency,
     eventTimes,
     lastDataTime,
+    deviceHealth: {
+      ...deviceHealth,
+      ageMs: heartbeatAgeMs,
+      status: healthStatus,
+    },
     calibration,
     publish,
     resetCounter,
