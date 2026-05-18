@@ -1,0 +1,235 @@
+.aic {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.aic-header {
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  height: 60px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.aic-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+}
+
+.aic-body {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  padding: 20px 28px;
+  min-height: 0;
+}
+
+/* Left column */
+.aic-left {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Card */
+.aic-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.aic-card-title {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #aebfe0;
+  margin: 0 0 14px;
+}
+
+/* Accuracy rows */
+.aic-acc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.aic-acc-row:last-child {
+  margin-bottom: 0;
+}
+
+.aic-acc-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.aic-acc-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.aic-acc-bar {
+  height: 100%;
+  background: var(--cyan);
+  border-radius: 3px;
+}
+
+.aic-acc-pct {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text);
+  width: 36px;
+  text-align: right;
+}
+
+.aic-acc-delta {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  white-space: nowrap;
+  width: 36px;
+}
+
+/* Feedback */
+.aic-feedback-row {
+  display: flex;
+  gap: 12px;
+}
+
+.aic-feedback-stat {
+  flex: 1;
+  background: var(--bg-card-alt);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.aic-feedback-num {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text);
+  line-height: 1;
+}
+
+.aic-feedback-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Event timeline */
+.aic-timeline-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.aic-timeline-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.aic-timeline-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.aic-timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.aic-timeline-item:last-child {
+  border-bottom: none;
+}
+
+.aic-timeline-item:hover {
+  background: var(--bg-card-alt);
+}
+
+.aic-timeline-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  width: 44px;
+}
+
+.aic-timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.aic-timeline-dot--ok      { background: var(--green); }
+.aic-timeline-dot--warn    { background: #f97316; }
+.aic-timeline-dot--danger  { background: var(--red); }
+.aic-timeline-dot--neutral { background: var(--border-bright); }
+
+.aic-timeline-event {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.aic-timeline-pred {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.aic-timeline-pred--jam     { background: #f9731618; color: #f97316; }
+.aic-timeline-pred--error   { background: #ef444418; color: var(--red); }
+.aic-timeline-pred--warning { background: #f59e0b18; color: var(--yellow); }
+
+.aic-timeline-feedback {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.aic-timeline-feedback--confirm { color: var(--green); }
+.aic-timeline-feedback--wrong   { color: var(--cyan); }
+
+.aic-empty {
+  padding: 32px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
