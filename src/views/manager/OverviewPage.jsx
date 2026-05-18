@@ -1,43 +1,28 @@
 import { useState, useEffect } from 'react'
 import { useMQTTContext } from '../../context/MQTTContext'
 import { useAlerts } from '../../hooks/useAlerts'
-import { useActivityLog } from '../../hooks/useActivityLog'
 import './OverviewPage.css'
 
-function timeAgo(ts) {
-  if (!ts) return '—'
-  const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 5)  return 'just now'
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  return `${Math.floor(diff / 3600)}h ago`
-}
+const LINES = ['Line 1', 'Line 2', 'Line 3', 'Line 4']
 
-function useNow() {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  return now
-}
-
-function formatTime(ts) {
-  return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const MOCK_LINE_DATA = {
+  'Line 2': { shift: 'Morning', operators: 2, target: 180, oee: 74, availability: 88, performance: 84, quality: 99, counter: 167, frequency: 3.8, downtime: 8 },
+  'Line 3': { shift: 'Afternoon', operators: 4, target: 220, oee: 81, availability: 92, performance: 88, quality: 99, counter: 195, frequency: 4.1, downtime: 3 },
+  'Line 4': { shift: 'Night', operators: 2, target: 160, oee: 62, availability: 78, performance: 79, quality: 98, counter: 89, frequency: 2.9, downtime: 45 },
 }
 
 function deriveOEE(status) {
   const isRunning = ['RUNNING', 'OBJECT_ENTERING', 'OBJECT_PASSING'].includes(status)
-  const isJam     = status === 'JAM'
+  const isJam = status === 'JAM'
   const isFault = ['MACHINE_ABNORMAL', 'ERROR', 'CONNECTION_LOST', 'SENSOR_OFFLINE'].includes(status)
   const avail = isRunning ? 91 : isJam ? 72 : isFault ? 68 : 85
-  const perf  = isRunning ? 86 : isJam ? 60 : isFault ? 62 : 80
-  const qual  = 99
+  const perf = isRunning ? 86 : isJam ? 60 : isFault ? 62 : 80
+  const qual = 99
   return {
     availability: avail,
-    performance:  perf,
-    quality:      qual,
-    oee:          Math.round(avail * perf * qual / 10000),
+    performance: perf,
+    quality: qual,
+    oee: Math.round(avail * perf * qual / 10000),
     isRunning,
     isJam,
   }
@@ -45,18 +30,18 @@ function deriveOEE(status) {
 
 function dotColor(entry) {
   const pred = entry.aiPrediction
-  if (pred === 'JAM')    return 'warn'
-  if (pred === 'ERROR' || pred === 'MACHINE_ABNORMAL' || pred === 'CONNECTION_LOST') return 'danger'
-  if (pred === 'WARNING' || pred === 'SENSOR_OFFLINE') return 'warn'
+  if (pred === 'JAM') return 'warn'
+  if (pred === 'ERROR') return 'danger'
+  if (pred === 'WARNING') return 'warn'
   if (entry.operatorFeedback?.type === 'confirm') return 'ok'
   return 'neutral'
 }
 
-function buildInsights({ status, counter, frequency, distanceHistory, machineSnapshot, alerts, now }) {
+function buildInsights({ status, counter, machineSnapshot, alerts, frequency, distanceHistory, now }) {
   const insights = []
   const { isRunning, isJam } = deriveOEE(status)
-
   const jamEvents = alerts.filter(a => a.status === 'JAM').length
+
   if (jamEvents >= 2) {
     insights.push({
       type: 'bottleneck',
@@ -82,32 +67,7 @@ function buildInsights({ status, counter, frequency, distanceHistory, machineSna
     })
   }
 
-  if (status === 'MACHINE_ABNORMAL') {
-    insights.push({
-      type: 'anomaly',
-      icon: '!',
-      title: 'Machine abnormal voltage',
-      why: 'Voltage is above the allowed operating range. Treat this as a machine condition, not a generic sensor error.',
-      similarity: null,
-      severity: 'danger',
-      time: now,
-    })
-  }
-
-  if (status === 'SENSOR_OFFLINE') {
-    insights.push({
-      type: 'sensor-offline',
-      icon: '!',
-      title: 'Sensor offline',
-      why: 'Sensor data is missing. Machine-off and sensor-offline states are reported separately by the bridge.',
-      similarity: null,
-      severity: 'warn',
-      time: now,
-    })
-  }
-
-  const hasInstability = distanceHistory && distanceHistory.length > 5
-  if (hasInstability) {
+  if (distanceHistory && distanceHistory.length > 5) {
     insights.push({
       type: 'instability',
       icon: '〜',
@@ -133,175 +93,151 @@ function buildInsights({ status, counter, frequency, distanceHistory, machineSna
   return insights
 }
 
+function Sparkline({ data, color = '#0052FF', height = 40 }) {
+  if (!data || data.length < 2) return <div style={{ height }} />
+  const values = data.map(d => d.distance ?? d.value ?? 0).filter(v => v != null && isFinite(v))
+  if (values.length < 2) return <div style={{ height }} />
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const W = 200
+  const H = height
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * W
+    const y = H - ((v - min) / range) * (H - 4) - 2
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function OverviewPage() {
-  const { counter, frequency, machineSnapshot, lastDataTime, distanceHistory } = useMQTTContext()
+  const { counter, frequency, machineSnapshot, distanceHistory } = useMQTTContext()
   const { alerts } = useAlerts()
-  const { entries } = useActivityLog()
-  const now = useNow()
+  const [selectedLine, setSelectedLine] = useState('Line 1')
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  const currentTime = new Date(now).toLocaleTimeString('en-US', {
+    hour12: false, hour: '2-digit', minute: '2-digit',
+  })
+
+  const isLine1 = selectedLine === 'Line 1'
+  const mockData = MOCK_LINE_DATA[selectedLine]
 
   const status = machineSnapshot?.status ?? 'IDLE'
-  const { availability, performance, quality, oee, isJam } = deriveOEE(status)
+  const { availability: realAvail, performance: realPerf, quality: realQual, oee: realOEE, isJam } = deriveOEE(status)
+  const realDowntime = machineSnapshot?.jam_duration_sec ?? 0
 
-  const downtime = machineSnapshot?.jam_duration_sec ?? 0
-  const oeeLow   = oee < 75
-  const dtHigh   = downtime > 30
+  const kv = isLine1
+    ? {
+      oee: realOEE, availability: realAvail, performance: realPerf, quality: realQual,
+      counterVal: counter ?? 0, freqVal: frequency, downtime: realDowntime,
+      shift: 'Morning', operators: 3, target: 200
+    }
+    : { ...mockData, counterVal: mockData.counter, freqVal: mockData.frequency }
 
-  const targetCount    = 200
-  const progressPct    = Math.min(100, Math.round((counter / targetCount) * 100))
-
-  const insights = buildInsights({ status, counter, frequency, distanceHistory, machineSnapshot, alerts, now })
-
-  const recentEntries = entries.slice(0, 6)
+  const oeeLow = kv.oee < 75
+  const dtHigh = kv.downtime > 30
 
   const kpis = [
-    {
-      label: 'Throughput',
-      value: counter ?? 0,
-      unit: 'pcs',
-      trend: counter > 0 ? '+trend' : null,
-      trendDir: 'up',
-      warn: false,
-    },
-    {
-      label: 'OEE',
-      value: oee,
-      unit: '%',
-      trend: oee < 75 ? '▼ Low' : '▲ Good',
-      trendDir: oee < 75 ? 'down' : 'up',
-      warn: oeeLow,
-    },
-    {
-      label: 'Availability',
-      value: availability,
-      unit: '%',
-      trend: null,
-      trendDir: 'up',
-      warn: availability < 80,
-    },
-    {
-      label: 'Performance',
-      value: performance,
-      unit: '%',
-      trend: null,
-      trendDir: 'up',
-      warn: performance < 70,
-    },
-    {
-      label: 'Quality',
-      value: quality,
-      unit: '%',
-      trend: '▲ Stable',
-      trendDir: 'up',
-      warn: false,
-    },
-    {
-      label: 'Downtime',
-      value: Math.round(downtime),
-      unit: 's',
-      trend: dtHigh ? '▲ High' : null,
-      trendDir: 'down',
-      warn: dtHigh,
-    },
+    { label: 'Throughput', value: kv.counterVal, unit: 'pcs', sub: kv.counterVal > 0 ? '↑ vs target' : '— no data', warn: false },
+    { label: 'OEE', value: kv.oee, unit: '%', sub: oeeLow ? '↓ below target' : '↑ on target', warn: oeeLow },
+    { label: 'Availability', value: kv.availability, unit: '%', sub: 'Target 95', warn: kv.availability < 80 },
+    { label: 'Performance', value: kv.performance, unit: '%', sub: `${typeof kv.freqVal === 'number' ? kv.freqVal.toFixed(1) : '—'} u/min`, warn: kv.performance < 70 },
+    { label: 'Quality', value: kv.quality, unit: '%', sub: '↑ stable today', warn: false },
+    { label: 'Downtime', value: Math.round(kv.downtime), unit: 's', sub: (isLine1 && isJam) ? '↑ 1 active jam' : '↓ 1 incident', warn: dtHigh },
   ]
 
-  return (
-    <div className="mgr-ovr">
-      {/* Header strip */}
-      <div className="mgr-header">
-        <div className="mgr-header-item">
-          <span className="mgr-header-label">Line</span>
-          <span className="mgr-header-val">Line 1</span>
-        </div>
-        <div className="mgr-header-div" />
-        <div className="mgr-header-item">
-          <span className="mgr-header-label">Shift</span>
-          <span className="mgr-header-val">Morning</span>
-        </div>
-        <div className="mgr-header-div" />
-        <div className="mgr-header-item">
-          <span className="mgr-header-time">{formatTime(now)}</span>
-        </div>
-        <div className="mgr-header-div" />
-        <div className="mgr-header-item">
-          <span className="mgr-header-label">Operators</span>
-          <span className="mgr-header-val">3</span>
-        </div>
+  const insights = buildInsights({ status, counter: kv.counterVal, machineSnapshot, alerts, frequency, distanceHistory, now })
+  const [hero, ...rest] = insights
+  const smallCards = rest.slice(0, 4)
 
-        <div className="mgr-target">
-          <span className="mgr-target-label">Target {targetCount} pcs</span>
-          <div className="mgr-progress">
-            <div
-              className="mgr-progress-fill"
-              style={{ width: `${progressPct}%` }}
-            />
+  return (
+    <div className="ov">
+      {/* Header */}
+      <div className="ov-header">
+        <h1 className="ov-title">Overview</h1>
+        <div className="ov-header-right">
+          <div className="ov-line-selector">
+            {LINES.map(line => (
+              <button
+                key={line}
+                className={`ov-line-btn${selectedLine === line ? ' ov-line-btn--active' : ''}`}
+                onClick={() => setSelectedLine(line)}
+              >
+                {line}
+              </button>
+            ))}
           </div>
-          <span className="mgr-target-pct">{progressPct}%</span>
+          <div className="ov-infobar-sep" />
+          <div className="ov-meta-item">
+            <span className="ov-meta-label">Shift</span>
+            <span className="ov-meta-val">{kv.shift}</span>
+          </div>
+          <div className="ov-infobar-sep" />
+          <div className="ov-meta-item">
+            <span className="ov-meta-label">Current Time</span>
+            <span className="ov-meta-val ov-meta-val--mono">{currentTime}</span>
+          </div>
         </div>
       </div>
 
-      {/* KPI row */}
-      <div className="mgr-kpi-row">
-        {kpis.map(({ label, value, unit, trend, trendDir, warn }) => (
-          <div key={label} className={`mgr-kpi-card${warn ? ' mgr-kpi-card--warn' : ''}`}>
-            <div className="mgr-kpi-label">{label}</div>
-            <div className={`mgr-kpi-value${warn ? ' mgr-kpi-value--warn' : ''}`}>
-              {value}<span className="mgr-kpi-unit">{unit}</span>
+      {/* KPI strip */}
+      <div className="ov-kpi-row">
+        {kpis.map(({ label, value, unit, sub, warn }) => (
+          <div key={label} className={`ov-kpi${warn ? ' ov-kpi--warn' : ''}`}>
+            <span className="ov-kpi-label">{label}</span>
+            <div className="ov-kpi-value">
+              {value}<span className="ov-kpi-unit">{unit}</span>
             </div>
-            {trend && (
-              <div className={`mgr-kpi-trend mgr-kpi-trend--${trendDir}`}>{trend}</div>
-            )}
+            <span className={`ov-kpi-sub${warn ? ' ov-kpi-sub--warn' : ''}`}>{sub}</span>
           </div>
         ))}
       </div>
 
       {/* Body */}
-      <div className="mgr-body">
-        {/* AI Insights */}
-        <div className="mgr-insights-col">
-          <p className="mgr-section-title">AI Insights</p>
-          {insights.map((ins, i) => (
-            <div
-              key={ins.type + i}
-              className={`mgr-insight mgr-insight--${ins.severity}`}
-            >
-              <div className="mgr-insight-header">
-                <span className="mgr-insight-icon">{ins.icon}</span>
-                <span className="mgr-insight-title">{ins.title}</span>
-                <span className="mgr-insight-time">{timeAgo(ins.time)}</span>
+      <div className="ov-body">
+        <h2 className="ov-section-title">AI Insights</h2>
+        <div className="ov-insights-grid">
+          <div className="ov-hero">
+            <div className="ov-hero-top">
+              <span className="ov-tag">{hero.type}</span>
+              {hero.badge && <span className={`ov-badge ov-badge--${hero.badgeColor}`}>{hero.badge}</span>}
+            </div>
+            <h3 className="ov-hero-title">
+              {hero.title.split('\n').map((line, i) => <span key={i}>{line}<br /></span>)}
+            </h3>
+            <p className="ov-hero-desc">{hero.why}</p>
+            <div className="ov-hero-chart">
+              <Sparkline data={distanceHistory} color="rgba(255,255,255,0.5)" height={48} />
+            </div>
+          </div>
+
+          {smallCards.map((card, i) => (
+            <div key={i} className={`ov-card ov-card--${card.severity}`}>
+              <div className="ov-card-top">
+                <span className="ov-tag ov-tag--dark">{card.type}</span>
+                {card.badge && <span className={`ov-badge ov-badge--${card.badgeColor}`}>{card.badge}</span>}
               </div>
-              <p className="mgr-insight-why">{ins.why}</p>
-              {ins.similarity && <p className="mgr-insight-sim">{ins.similarity}</p>}
+              <h4 className="ov-card-title">{card.title}</h4>
+              <p className="ov-card-desc">{card.why}</p>
+              <div className="ov-card-chart">
+                <Sparkline
+                  data={distanceHistory}
+                  color={card.trendDir === 'up' ? '#0052FF' : card.trendDir === 'down' ? '#EF4444' : '#94A3B8'}
+                  height={32}
+                />
+              </div>
             </div>
           ))}
-        </div>
-
-        {/* Recent Activity */}
-        <div className="mgr-activity-col">
-          <p className="mgr-section-title">Recent Activity</p>
-          {recentEntries.length === 0 ? (
-            <p className="mgr-empty">No activity recorded yet</p>
-          ) : (
-            <ul className="mgr-activity-list">
-              {recentEntries.map((entry) => {
-                const color = dotColor(entry)
-                const fb = entry.operatorFeedback
-                return (
-                  <li key={entry.id} className="mgr-activity-item">
-                    <span className={`mgr-activity-dot mgr-activity-dot--${color}`} />
-                    <div className="mgr-activity-content">
-                      <span className="mgr-activity-event">{entry.event}</span>
-                      {fb && (
-                        <span className={`mgr-activity-tag mgr-activity-tag--${fb.type}`}>
-                          {fb.label}
-                        </span>
-                      )}
-                    </div>
-                    <span className="mgr-activity-time">{timeAgo(entry.time)}</span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
         </div>
       </div>
     </div>
