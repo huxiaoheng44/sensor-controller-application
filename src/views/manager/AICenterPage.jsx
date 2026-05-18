@@ -24,8 +24,8 @@ const ACCURACY_ROWS = [
 
 function dotClassForPred(pred) {
   if (pred === 'JAM')     return 'warn'
-  if (pred === 'ERROR')   return 'danger'
-  if (pred === 'WARNING') return 'warn'
+  if (pred === 'ERROR' || pred === 'MACHINE_ABNORMAL' || pred === 'CONNECTION_LOST') return 'danger'
+  if (pred === 'WARNING' || pred === 'SENSOR_OFFLINE') return 'warn'
   return 'neutral'
 }
 
@@ -33,7 +33,9 @@ function predBadge(pred) {
   if (!pred) return null
   if (pred === 'JAM')     return { cls: 'jam',     label: 'JAM' }
   if (pred === 'ERROR')   return { cls: 'error',   label: 'ERROR' }
+  if (pred === 'MACHINE_ABNORMAL') return { cls: 'error', label: 'MACHINE ABNORMAL' }
   if (pred === 'WARNING') return { cls: 'warning', label: 'WARNING' }
+  if (pred === 'SENSOR_OFFLINE') return { cls: 'warning', label: 'SENSOR OFFLINE' }
   return null
 }
 

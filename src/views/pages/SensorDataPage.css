@@ -4,9 +4,39 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: transparent;
 }
 
-/* Override TabletView's full-viewport height so it fits inside the layout */
+/* Fit TabletView into the shared tablet shell. */
 .sdp .tv {
   height: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.sdp .tv-header,
+.sdp .tv-tabbar,
+.sdp .tv-body {
+  width: 100%;
+  max-width: none;
+  box-shadow: none;
+}
+
+.sdp .tv-header {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 72% 0%, rgba(0, 82, 255, 0.06), transparent 32%),
+    rgba(255, 255, 255, 0.86);
+}
+
+.sdp .tv-tabbar {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.sdp .tv-body {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.68);
 }

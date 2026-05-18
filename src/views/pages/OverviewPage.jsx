@@ -29,8 +29,11 @@ function StatusBadge({ status }) {
     JAM: ['Blocked', '#f97316'],
     ERROR: ['Error', '#ef4444'],
     WARNING: ['Warning', '#f59e0b'],
+    MACHINE_ABNORMAL: ['Machine Abnormal', '#ef4444'],
     MACHINE_OFF: ['Machine Off', '#64748b'],
     CONNECTION_LOST: ['Connection Lost', '#ef4444'],
+    SENSOR_OFFLINE: ['Sensor Offline', '#f59e0b'],
+    OFF: ['Machine Off', '#64748b'],
   }
   const [label, color] = map[status] ?? ['Waiting', '#475569']
   return (
@@ -145,8 +148,8 @@ export default function OverviewPage({ onNavigate }) {
 }
 
 function severityOf(status) {
-  if (status === 'ERROR' || status === 'CONNECTION_LOST') return 'danger'
-  if (status === 'JAM' || status === 'WARNING') return 'warn'
+  if (status === 'ERROR' || status === 'MACHINE_ABNORMAL' || status === 'CONNECTION_LOST') return 'danger'
+  if (status === 'JAM' || status === 'WARNING' || status === 'SENSOR_OFFLINE') return 'warn'
   if (status === 'RUNNING') return 'ok'
   return 'neutral'
 }

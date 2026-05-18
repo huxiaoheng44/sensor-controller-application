@@ -65,6 +65,10 @@ function coerceString(...values) {
   return null
 }
 
+function normalizeStatus(value) {
+  return coerceString(value)?.toUpperCase() ?? null
+}
+
 function getBridgeConfigPayload(config) {
   const enterThreshold = coerceFiniteNumber(config.enterThreshold, DEFAULT_CONFIG.enterThreshold)
   const exitThreshold = coerceFiniteNumber(config.exitThreshold, DEFAULT_CONFIG.exitThreshold)
@@ -376,7 +380,7 @@ export function useMQTT() {
       try {
         if (topic === TOPIC_DERIVED_MACHINE_STATUS) {
           if (isPlainObject(data)) {
-            const status = coerceString(data.status, data.machine_status, data.state) ?? 'UNKNOWN'
+            const status = normalizeStatus(data.status) ?? normalizeStatus(data.machine_status) ?? normalizeStatus(data.state) ?? 'UNKNOWN'
             const itemCount = readItemCount(data)
             setMachineStatus(status)
             setMachineSnapshot({
@@ -401,8 +405,8 @@ export function useMQTT() {
               ...(isPlainObject(prev) ? prev : {}),
               objectBlocking: status === 'JAM',
               machineStatus: status,
-              distanceState: coerceString(data.distance_status),
-              voltageState: coerceString(data.voltage_status),
+              distanceState: normalizeStatus(data.distance_status),
+              voltageState: normalizeStatus(data.voltage_status),
               jamDurationSec: coerceFiniteNumber(data.jam_duration_sec),
             }))
             setLastDataTime(now)
@@ -438,9 +442,9 @@ export function useMQTT() {
           setLastDataTime(now)
           if (isPlainObject(data)) {
             const point = buildDistancePoint(data, {
-              objectBlocking: coerceBoolean(data.object_blocking, data.objectBlocking, data.blocking, data.jammed) ?? coerceString(data.status) === 'JAM',
-              distanceState: coerceString(data.status, data.state),
-              normalizedStatus: coerceString(data.normalized_status),
+              objectBlocking: coerceBoolean(data.object_blocking, data.objectBlocking, data.blocking, data.jammed) ?? normalizeStatus(data.status) === 'JAM',
+              distanceState: normalizeStatus(data.status) ?? normalizeStatus(data.state),
+              normalizedStatus: normalizeStatus(data.normalized_status),
               jammed: coerceBoolean(data.jammed, data.is_jammed),
               offline: coerceBoolean(data.offline, data.is_offline),
               stateDurationSec: coerceFiniteNumber(data.state_duration_sec),
@@ -465,7 +469,7 @@ export function useMQTT() {
           setLastDataTime(now)
           if (isPlainObject(data)) {
             const voltage = readVoltage(data)
-            const status = coerceString(data.status, data.state, data.machine_status)
+            const status = normalizeStatus(data.status) ?? normalizeStatus(data.state) ?? normalizeStatus(data.machine_status)
             setCurrentSnapshot({
               ...data,
               receivedAt: now,

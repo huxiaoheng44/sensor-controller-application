@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
 }
 
 /* ── Header ── */
@@ -15,7 +15,9 @@
   padding: 0 24px;
   height: 64px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
+  background:
+    radial-gradient(circle at 72% 0%, rgba(0, 82, 255, 0.06), transparent 32%),
+    rgba(255, 255, 255, 0.86);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -68,7 +70,7 @@
 .alog-body {
   flex: 1;
   overflow: auto;
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.68);
   padding: 16px 24px;
 }
 

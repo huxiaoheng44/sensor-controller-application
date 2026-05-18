@@ -4,7 +4,7 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
 }
 
 /* ── Top bar ── */
@@ -15,7 +15,9 @@
   padding: 0 24px;
   height: 64px;
   flex-shrink: 0;
-  background: var(--bg-card);
+  background:
+    radial-gradient(circle at 72% 0%, rgba(0, 82, 255, 0.06), transparent 32%),
+    rgba(255, 255, 255, 0.86);
   border-bottom: 1px solid var(--border);
 }
 
@@ -88,6 +90,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .op-section {

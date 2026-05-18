@@ -1,14 +1,33 @@
 .tl {
-  display: flex;
-  flex-direction: column;
   height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-  background: var(--bg);
+  padding: 12px;
+  background:
+    radial-gradient(circle at 12% 4%, rgba(0, 82, 255, 0.1), transparent 28%),
+    radial-gradient(circle at 96% 12%, rgba(77, 124, 255, 0.08), transparent 24%),
+    linear-gradient(135deg, #e7edf6 0%, #f7f9fc 100%);
   color: var(--text);
   font-size: 16px;
 }
 
-/* ── Content area ── */
+.tl-device {
+  width: min(calc(100vw - 24px), 1680px);
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 34px 90px rgba(31, 41, 55, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+/* Content area */
 .tl-content {
   flex: 1;
   min-height: 0;
@@ -17,15 +36,16 @@
   overflow: hidden;
 }
 
-/* ── Bottom navigation bar ── */
+/* Bottom navigation bar */
 .tl-bottomnav {
   display: flex;
   align-items: stretch;
-  height: 68px;
+  min-height: 74px;
   flex-shrink: 0;
-  background: var(--bg-card);
+  background: rgba(255, 255, 255, 0.94);
   border-top: 1px solid var(--border);
   padding: 0 8px;
+  box-shadow: 0 -14px 34px rgba(31, 41, 55, 0.05);
 }
 
 .tl-tab {
@@ -35,17 +55,21 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 8px 4px;
+  min-width: 0;
+  padding: 9px 6px;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   position: relative;
 }
 
 .tl-tab:hover {
   color: var(--text-dim);
+  background: rgba(0, 82, 255, 0.04);
 }
 
 .tl-tab--active {
@@ -58,9 +82,9 @@
   top: 0;
   left: 16%;
   right: 16%;
-  height: 2px;
+  height: 3px;
   background: var(--cyan);
-  border-radius: 0 0 3px 3px;
+  border-radius: 0 0 4px 4px;
 }
 
 .tl-tab-icon-wrap {
@@ -106,11 +130,16 @@
   letter-spacing: 0.01em;
 }
 
-/* ── Connection status (right side) ── */
+/* Connection status */
 .tl-tab-conn {
-  flex: 0 0 80px;
+  flex: 0 0 86px;
   cursor: default;
   border-left: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.tl-tab-conn:hover {
+  background: transparent;
   color: var(--text-muted);
 }
 
@@ -125,4 +154,29 @@
 .tl-conn-dot--online {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
+}
+
+@media (max-width: 760px) {
+  .tl {
+    padding: 0;
+  }
+
+  .tl-device {
+    width: 100%;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .tl-bottomnav {
+    min-height: 66px;
+  }
+
+  .tl-tab-label {
+    font-size: 11px;
+  }
+
+  .tl-tab-conn {
+    flex-basis: 72px;
+  }
 }

@@ -40,8 +40,8 @@ function getMachineStatus(machine, realStatus) {
   if (machine.realData) {
     const s = realStatus ?? 'IDLE'
     if (['RUNNING', 'OBJECT_ENTERING', 'OBJECT_PASSING'].includes(s)) return 'RUNNING'
-    if (s === 'JAM' || s === 'ERROR') return 'FAULT'
-    if (s === 'MACHINE_OFF') return 'IDLE'
+    if (s === 'JAM' || s === 'ERROR' || s === 'MACHINE_ABNORMAL' || s === 'SENSOR_OFFLINE' || s === 'CONNECTION_LOST') return 'FAULT'
+    if (s === 'MACHINE_OFF' || s === 'OFF') return 'IDLE'
     return 'IDLE'
   }
   return MOCK_STATUS[machine.id] ?? 'IDLE'

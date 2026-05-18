@@ -31,9 +31,11 @@ function formatStatus(status) {
     JAM: 'Blocked',
     ERROR: 'Error',
     WARNING: 'Warning',
+    MACHINE_ABNORMAL: 'Machine Abnormal',
     MACHINE_OFF: 'Machine Off',
     CONNECTION_LOST: 'Connection Lost',
-    OFF: 'Off',
+    SENSOR_OFFLINE: 'Sensor Offline',
+    OFF: 'Machine Off',
     OBJECT_ENTERING: 'Object Entering',
     OBJECT_PASSING: 'Object Passing',
   }
@@ -42,7 +44,8 @@ function formatStatus(status) {
 
 function statusSeverity(status, warnings = []) {
   const normalized = String(status ?? '').toUpperCase()
-  if (normalized === 'ERROR' || normalized === 'CONNECTION_LOST') return 'danger'
+  if (normalized === 'ERROR' || normalized === 'MACHINE_ABNORMAL' || normalized === 'CONNECTION_LOST') return 'danger'
+  if (normalized === 'SENSOR_OFFLINE') return 'warning'
   if (normalized === 'JAM' || normalized === 'WARNING' || warnings?.length) return 'warning'
   if (normalized === 'RUNNING' || normalized === 'OBJECT_ENTERING' || normalized === 'OBJECT_PASSING') return 'success'
   return 'neutral'
@@ -122,9 +125,10 @@ export default function App() {
   const fusedStatus = machineSnapshot?.status ?? null
   const fusedWarnings = Array.isArray(machineSnapshot?.warnings) ? machineSnapshot.warnings : []
   const distanceStatus = fusedStatus ?? latestData?.distanceState ?? (latestData?.objectBlocking ? 'JAM' : null)
-  const currentStatus = fusedStatus ?? currentSnapshot?.voltageStatus ?? currentSnapshot?.machineStatus ?? null
+  const currentStatus = currentSnapshot?.voltageStatus ?? currentSnapshot?.machineStatus ?? null
   const isBlocking = fusedStatus === 'JAM' || latestData?.objectBlocking === true
   const statusSource = machineSnapshot?.source ? `Source: ${machineSnapshot.source}` : 'Sensor derived'
+  const currentStatusSource = currentSnapshot?.source ? `Source: ${currentSnapshot.source}` : 'Current sensor'
   const staleSecs = lastDataTime ? Math.floor((Date.now() - lastDataTime) / 1000) : null
   const isStale = staleSecs !== null && staleSecs > 5
 
@@ -134,6 +138,8 @@ export default function App() {
   const currentChartData = currentSnapshotHistory.filter((point) => now - point.time <= currentRangeMs)
 
   const activeSensor = sensorConnections.find((sensor) => sensor.id === activeSensorId) ?? sensorConnections[0]
+  const distanceDisplayStatus = distanceStatus ?? (!connected ? 'CONNECTION_LOST' : activeSensor.stale ? 'SENSOR_OFFLINE' : 'IDLE')
+  const currentDisplayStatus = currentStatus ?? (!connected ? 'CONNECTION_LOST' : activeSensor.stale ? 'SENSOR_OFFLINE' : currentSnapshot?.receivedAt ? 'RUNNING' : 'SENSOR_OFFLINE')
 
   return (
     <div className="app">
@@ -173,8 +179,8 @@ export default function App() {
           <>
             <div className="sensor-view-title">
               <span>{activeSensor.label}</span>
-              <span className={`sensor-view-state sensor-view-state--${statusSeverity(distanceStatus ?? (activeSensor.connected ? 'RUNNING' : null), fusedWarnings)}`}>
-                {fusedStatus ? `${formatStatus(fusedStatus)} · ${statusSource}` : activeSensor.connected ? 'Connected' : activeSensor.stale ? 'Signal timeout' : 'Waiting for data'}
+              <span className={`sensor-view-state sensor-view-state--${statusSeverity(distanceDisplayStatus, fusedWarnings)}`}>
+                {fusedStatus ? (machineSnapshot?.description ?? `${formatStatus(fusedStatus)} · ${statusSource}`) : activeSensor.connected ? 'Connected' : !connected ? formatStatus('CONNECTION_LOST') : activeSensor.stale ? formatStatus('SENSOR_OFFLINE') : 'Waiting for data'}
               </span>
             </div>
 
@@ -188,9 +194,9 @@ export default function App() {
                   {distance != null ? distance.toFixed(1) : '—'}
                 </div>
                 <div className="metric-unit">cm</div>
-                <div className={`blocking-pill status-pill--${statusSeverity(distanceStatus, fusedWarnings)}`}>
+                <div className={`blocking-pill status-pill--${statusSeverity(distanceDisplayStatus, fusedWarnings)}`}>
                   {isBlocking && <span className="pulse-dot pulse-dot--orange" />}
-                  {isBlocking ? 'Blocked' : formatStatus(distanceStatus ?? 'IDLE')}
+                  {isBlocking ? 'Blocked' : formatStatus(distanceDisplayStatus)}
                 </div>
                 {machineSnapshot?.confidence && (
                   <div className="metric-note">Confidence: {machineSnapshot.confidence}</div>
@@ -421,8 +427,8 @@ export default function App() {
           <>
             <div className="sensor-view-title">
               <span>{activeSensor.label}</span>
-              <span className={`sensor-view-state sensor-view-state--${statusSeverity(currentStatus, fusedWarnings)}`}>
-                {fusedStatus ? `${formatStatus(fusedStatus)} · ${statusSource}` : activeSensor.connected ? 'Connected' : activeSensor.stale ? 'Signal timeout' : 'Waiting for data'}
+              <span className={`sensor-view-state sensor-view-state--${statusSeverity(currentDisplayStatus, fusedWarnings)}`}>
+                {currentStatus ? (currentSnapshot?.description ?? `${formatStatus(currentStatus)} · ${currentStatusSource}`) : activeSensor.connected ? 'Connected' : !connected ? formatStatus('CONNECTION_LOST') : activeSensor.stale ? formatStatus('SENSOR_OFFLINE') : 'Waiting for data'}
               </span>
             </div>
 
@@ -433,8 +439,8 @@ export default function App() {
                   {currentSnapshot?.voltage != null ? currentSnapshot.voltage.toFixed(2) : '—'}
                 </div>
                 <div className="metric-unit">V</div>
-                <div className={`blocking-pill status-pill--${statusSeverity(currentStatus, fusedWarnings)}`}>
-                  {formatStatus(currentStatus ?? (currentSnapshot?.receivedAt ? 'RUNNING' : 'OFF'))}
+                <div className={`blocking-pill status-pill--${statusSeverity(currentDisplayStatus, fusedWarnings)}`}>
+                  {formatStatus(currentDisplayStatus)}
                 </div>
               </div>
 

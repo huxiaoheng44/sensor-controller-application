@@ -1,10 +1,12 @@
 // src/stores/alerts.js
-const ALERT_STATUSES = new Set(['JAM', 'ERROR', 'WARNING', 'MACHINE_OFF'])
+const ALERT_STATUSES = new Set(['JAM', 'ERROR', 'WARNING', 'MACHINE_ABNORMAL', 'MACHINE_OFF', 'SENSOR_OFFLINE'])
 const ALERT_QUESTIONS = {
   JAM: 'Packaging jam detected?',
   ERROR: 'Machine error detected?',
   WARNING: 'Unexpected sensor behavior?',
+  MACHINE_ABNORMAL: 'Machine abnormal condition detected?',
   MACHINE_OFF: 'Machine stopped unexpectedly?',
+  SENSOR_OFFLINE: 'Sensor offline?',
 }
 const WRONG_REASONS = ['No material', 'Cleaning', 'Maintenance', 'Sensor issue', 'Unknown']
 
@@ -17,7 +19,8 @@ export function getAlerts() { return [...alerts] }
 
 export function processSnapshot(snapshot) {
   if (!snapshot?.status) return
-  const { status, confidence, source, jam_duration_sec, warnings } = snapshot
+  const status = String(snapshot.status).toUpperCase()
+  const { confidence, source, jam_duration_sec, warnings } = snapshot
   if (!ALERT_STATUSES.has(status)) return
   // Deduplicate: don't add if latest pending alert has same status
   const latestPending = alerts.find(a => a.state === 'pending')
@@ -53,5 +56,12 @@ export function wrongAlert(id, feedback) {
 export { WRONG_REASONS }
 
 function formatEvent(status) {
-  return { JAM: 'Machine Blocked', ERROR: 'Machine Error', WARNING: 'Sensor Warning', MACHINE_OFF: 'Machine Stopped' }[status] ?? status
+  return {
+    JAM: 'Machine Blocked',
+    ERROR: 'Machine Error',
+    WARNING: 'Sensor Warning',
+    MACHINE_ABNORMAL: 'Machine Abnormal',
+    MACHINE_OFF: 'Machine Stopped',
+    SENSOR_OFFLINE: 'Sensor Offline',
+  }[status] ?? status
 }

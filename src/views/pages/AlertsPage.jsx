@@ -13,7 +13,13 @@ function timeAgo(ts) {
 }
 
 const STATUS_COLORS = {
-  JAM: '#f97316', ERROR: '#ef4444', WARNING: '#f59e0b', MACHINE_OFF: '#64748b',
+  JAM: '#f97316',
+  ERROR: '#ef4444',
+  MACHINE_ABNORMAL: '#ef4444',
+  WARNING: '#f59e0b',
+  SENSOR_OFFLINE: '#f59e0b',
+  MACHINE_OFF: '#64748b',
+  OFF: '#64748b',
 }
 
 function AlertCard({ alert, onConfirm, onWrong }) {

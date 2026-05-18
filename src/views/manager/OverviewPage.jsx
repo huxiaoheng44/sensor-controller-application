@@ -29,8 +29,9 @@ function formatTime(ts) {
 function deriveOEE(status) {
   const isRunning = ['RUNNING', 'OBJECT_ENTERING', 'OBJECT_PASSING'].includes(status)
   const isJam     = status === 'JAM'
-  const avail = isRunning ? 91 : isJam ? 72 : 85
-  const perf  = isRunning ? 86 : isJam ? 60 : 80
+  const isFault = ['MACHINE_ABNORMAL', 'ERROR', 'CONNECTION_LOST', 'SENSOR_OFFLINE'].includes(status)
+  const avail = isRunning ? 91 : isJam ? 72 : isFault ? 68 : 85
+  const perf  = isRunning ? 86 : isJam ? 60 : isFault ? 62 : 80
   const qual  = 99
   return {
     availability: avail,
@@ -45,8 +46,8 @@ function deriveOEE(status) {
 function dotColor(entry) {
   const pred = entry.aiPrediction
   if (pred === 'JAM')    return 'warn'
-  if (pred === 'ERROR')  return 'danger'
-  if (pred === 'WARNING') return 'warn'
+  if (pred === 'ERROR' || pred === 'MACHINE_ABNORMAL' || pred === 'CONNECTION_LOST') return 'danger'
+  if (pred === 'WARNING' || pred === 'SENSOR_OFFLINE') return 'warn'
   if (entry.operatorFeedback?.type === 'confirm') return 'ok'
   return 'neutral'
 }
@@ -77,6 +78,30 @@ function buildInsights({ status, counter, frequency, distanceHistory, machineSna
       why: `Object blocking for ${dur}s. Distance sensor reports stall. Current spike confirms motor stress and possible upstream feed issue.`,
       similarity: null,
       severity: 'danger',
+      time: now,
+    })
+  }
+
+  if (status === 'MACHINE_ABNORMAL') {
+    insights.push({
+      type: 'anomaly',
+      icon: '!',
+      title: 'Machine abnormal voltage',
+      why: 'Voltage is above the allowed operating range. Treat this as a machine condition, not a generic sensor error.',
+      similarity: null,
+      severity: 'danger',
+      time: now,
+    })
+  }
+
+  if (status === 'SENSOR_OFFLINE') {
+    insights.push({
+      type: 'sensor-offline',
+      icon: '!',
+      title: 'Sensor offline',
+      why: 'Sensor data is missing. Machine-off and sensor-offline states are reported separately by the bridge.',
+      similarity: null,
+      severity: 'warn',
       time: now,
     })
   }

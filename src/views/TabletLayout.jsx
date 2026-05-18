@@ -34,35 +34,37 @@ export default function TabletLayout() {
 
   return (
     <div className="tl">
-      <main className="tl-content">
-        {page === 'overview' && <OverviewPage onNavigate={setPage} />}
-        {page === 'alerts'   && <AlertsPage />}
-        {page === 'sensor'   && <SensorDataPage />}
-        {page === 'log'      && <ActivityLogPage />}
-      </main>
+      <div className="tl-device">
+        <main className="tl-content">
+          {page === 'overview' && <OverviewPage onNavigate={setPage} />}
+          {page === 'alerts'   && <AlertsPage />}
+          {page === 'sensor'   && <SensorDataPage />}
+          {page === 'log'      && <ActivityLogPage />}
+        </main>
 
-      <nav className="tl-bottomnav">
-        {NAV.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            className={`tl-tab${page === id ? ' tl-tab--active' : ''}`}
-            onClick={() => setPage(id)}
-          >
-            <span className="tl-tab-icon-wrap">
-              <span className="tl-tab-icon"><Icon /></span>
-              {id === 'alerts' && pendingCount > 0 && (
-                <span className="tl-tab-badge">{pendingCount}</span>
-              )}
-            </span>
-            <span className="tl-tab-label">{label}</span>
-          </button>
-        ))}
+        <nav className="tl-bottomnav">
+          {NAV.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              className={`tl-tab${page === id ? ' tl-tab--active' : ''}`}
+              onClick={() => setPage(id)}
+            >
+              <span className="tl-tab-icon-wrap">
+                <span className="tl-tab-icon"><Icon /></span>
+                {id === 'alerts' && pendingCount > 0 && (
+                  <span className="tl-tab-badge">{pendingCount}</span>
+                )}
+              </span>
+              <span className="tl-tab-label">{label}</span>
+            </button>
+          ))}
 
-        <div className="tl-tab tl-tab-conn">
-          <span className={`tl-conn-dot${connected ? ' tl-conn-dot--online' : ''}`} />
-          <span className="tl-tab-label">{connected ? 'Online' : 'Offline'}</span>
-        </div>
-      </nav>
+          <div className="tl-tab tl-tab-conn">
+            <span className={`tl-conn-dot${connected ? ' tl-conn-dot--online' : ''}`} />
+            <span className="tl-tab-label">{connected ? 'Online' : 'Offline'}</span>
+          </div>
+        </nav>
+      </div>
     </div>
   )
 }

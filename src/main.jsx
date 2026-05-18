@@ -12,10 +12,11 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <MQTTProvider>
         <Routes>
-          <Route path="/"        element={<App />} />
+          <Route path="/"        element={<Navigate to="/tablet" replace />} />
+          <Route path="/desktop" element={<App />} />
           <Route path="/tablet"  element={<TabletLayout />} />
           <Route path="/manager" element={<ManagerView />} />
-          <Route path="*"        element={<Navigate to="/" replace />} />
+          <Route path="*"        element={<Navigate to="/tablet" replace />} />
         </Routes>
       </MQTTProvider>
     </BrowserRouter>

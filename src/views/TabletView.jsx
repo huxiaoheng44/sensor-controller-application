@@ -31,9 +31,11 @@ function formatStatus(status) {
     JAM: 'Blocked',
     ERROR: 'Error',
     WARNING: 'Warning',
+    MACHINE_ABNORMAL: 'Machine Abnormal',
     MACHINE_OFF: 'Machine Off',
     CONNECTION_LOST: 'Connection Lost',
-    OFF: 'Off',
+    SENSOR_OFFLINE: 'Sensor Offline',
+    OFF: 'Machine Off',
     OBJECT_ENTERING: 'Object Entering',
     OBJECT_PASSING: 'Object Passing',
   }
@@ -42,7 +44,8 @@ function formatStatus(status) {
 
 function statusSeverity(status, warnings = []) {
   const normalized = String(status ?? '').toUpperCase()
-  if (normalized === 'ERROR' || normalized === 'CONNECTION_LOST') return 'danger'
+  if (normalized === 'ERROR' || normalized === 'MACHINE_ABNORMAL' || normalized === 'CONNECTION_LOST') return 'danger'
+  if (normalized === 'SENSOR_OFFLINE') return 'warning'
   if (normalized === 'JAM' || normalized === 'WARNING' || warnings?.length) return 'warning'
   if (normalized === 'RUNNING' || normalized === 'OBJECT_ENTERING' || normalized === 'OBJECT_PASSING') return 'success'
   return 'neutral'
@@ -88,9 +91,10 @@ export default function TabletView() {
   const fusedStatus = machineSnapshot?.status ?? null
   const fusedWarnings = Array.isArray(machineSnapshot?.warnings) ? machineSnapshot.warnings : []
   const distanceStatus = fusedStatus ?? latestData?.distanceState ?? (latestData?.objectBlocking ? 'JAM' : null)
-  const currentStatus = fusedStatus ?? currentSnapshot?.voltageStatus ?? currentSnapshot?.machineStatus ?? null
+  const currentStatus = currentSnapshot?.voltageStatus ?? currentSnapshot?.machineStatus ?? null
   const isBlocking = fusedStatus === 'JAM' || latestData?.objectBlocking === true
   const statusSource = machineSnapshot?.source ? `Source: ${machineSnapshot.source}` : 'Sensor derived'
+  const currentStatusSource = currentSnapshot?.source ? `Source: ${currentSnapshot.source}` : 'Current sensor'
   const staleSecs = lastDataTime ? Math.floor((Date.now() - lastDataTime) / 1000) : null
   const isStale = staleSecs !== null && staleSecs > 5
   const currentSnapshotAgeSecs = currentSnapshot?.receivedAt
@@ -102,6 +106,8 @@ export default function TabletView() {
   const chartEvents = eventTimes.filter((time) => now - time <= distanceRangeMs)
   const currentChartData = currentSnapshotHistory.filter((point) => now - point.time <= currentRangeMs)
   const activeSensor = sensorConnections.find((sensor) => sensor.id === activeSensorId) ?? sensorConnections[0]
+  const distanceDisplayStatus = distanceStatus ?? (!connected ? 'CONNECTION_LOST' : activeSensor.stale ? 'SENSOR_OFFLINE' : 'IDLE')
+  const currentDisplayStatus = currentStatus ?? (!connected ? 'CONNECTION_LOST' : activeSensor.stale ? 'SENSOR_OFFLINE' : isCurrentSnapshotOnline ? 'RUNNING' : 'SENSOR_OFFLINE')
 
   return (
     <div className="tv">
@@ -119,7 +125,7 @@ export default function TabletView() {
             ? isStale ? `No data · ${staleSecs}s ago` : `Last · ${fmtTime(lastDataTime)}`
             : 'Waiting…'}
         </div>
-        <Link to="/" className="tv-exit"><MonitorIcon /> Desktop</Link>
+        <Link to="/desktop" className="tv-exit"><MonitorIcon /> Desktop</Link>
       </header>
 
       {/* ── Tab bar ── */}
@@ -155,12 +161,12 @@ export default function TabletView() {
                   {distance != null ? distance.toFixed(1) : '—'}
                 </div>
                 <div className="tv-mcard-unit">cm</div>
-                <div className={`tv-badge tv-badge--${statusSeverity(distanceStatus, fusedWarnings)}`}>
+                <div className={`tv-badge tv-badge--${statusSeverity(distanceDisplayStatus, fusedWarnings)}`}>
                   {isBlocking && <span className="tv-pulse" />}
-                  {isBlocking ? 'Blocked' : formatStatus(distanceStatus ?? 'IDLE')}
+                  {isBlocking ? 'Blocked' : formatStatus(distanceDisplayStatus)}
                 </div>
                 <div className="tv-mcard-note">
-                  {fusedStatus ? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}` : 'Distance sensor'}
+                  {fusedStatus ? (machineSnapshot?.description ?? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}`) : 'Distance sensor'}
                 </div>
               </div>
 
@@ -306,11 +312,11 @@ export default function TabletView() {
                 {currentSnapshot?.voltage != null ? currentSnapshot.voltage.toFixed(2) : '—'}
               </div>
               <div className="tv-mcard-unit">V</div>
-              <div className={`tv-badge tv-badge--${statusSeverity(currentStatus ?? (isCurrentSnapshotOnline ? 'RUNNING' : 'OFF'), fusedWarnings)}`}>
-                {formatStatus(currentStatus ?? (isCurrentSnapshotOnline ? 'RUNNING' : 'OFF'))}
+              <div className={`tv-badge tv-badge--${statusSeverity(currentDisplayStatus, fusedWarnings)}`}>
+                {formatStatus(currentDisplayStatus)}
               </div>
               <div className="tv-mcard-note">
-                {fusedStatus ? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}` : 'Voltage sensor'}
+                {currentStatus ? currentStatusSource : 'Voltage sensor'}
               </div>
             </div>
 
