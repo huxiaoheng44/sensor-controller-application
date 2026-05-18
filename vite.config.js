@@ -6,4 +6,9 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  build: {
+    rollupOptions: {
+      input: 'index.html',
+    },
+  },
 })

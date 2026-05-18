@@ -14,6 +14,17 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false })
 }
 
+function fmtAxisTime(ts) {
+  const d = new Date(ts)
+  return d.toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 function getBlockingRanges(data) {
   const ranges = []
   let start = null
@@ -36,21 +47,22 @@ function ChartTooltip({ active, payload, label }) {
   const d = payload[0]?.payload
   return (
     <div style={{
-      background: '#111827',
-      border: '1px solid #2d3f5a',
-      borderRadius: 8,
-      padding: '8px 12px',
+      background: '#ffffff',
+      border: '1px solid #E2E8F0',
+      borderRadius: 14,
+      padding: '10px 14px',
       fontSize: 13,
-      color: '#e2e8f0',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      color: '#0F172A',
+      boxShadow: '0 20px 25px rgba(15,23,42,0.1)',
       minWidth: 160,
     }}>
-      <div style={{ color: '#64748b', marginBottom: 6 }}>{fmtTime(label)}</div>
+      <div style={{ color: '#64748B', marginBottom: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{fmtTime(label)}</div>
 
       <div>
-        Dist:&nbsp;
-        <span style={{ color: '#22d3ee', fontWeight: 700, fontFamily: 'monospace' }}>
-          {d?.distance ?? '—'} cm
+        {d?.valueLabel ?? 'Dist'}:&nbsp;
+        <span style={{ color: '#0052FF', fontWeight: 800, fontFamily: 'JetBrains Mono, monospace' }}>
+          {d?.chartValue ?? '—'} {d?.valueUnit ?? 'cm'}
         </span>
       </div>
 
@@ -60,7 +72,7 @@ function ChartTooltip({ active, payload, label }) {
             ▌ Object Blocking
           </div>
           {d.minDistance != null && (
-            <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+            <div style={{ color: '#64748B', fontSize: 11, marginTop: 2 }}>
               Min:&nbsp;<span style={{ color: '#fb923c' }}>{d.minDistance} cm</span>
             </div>
           )}
@@ -76,15 +88,31 @@ export default function DistanceChart({
   height = 280,
   enterThreshold,
   exitThreshold,
+  domainStart,
+  domainEnd,
+  valueKey = 'distance',
+  valueUnit = 'cm',
+  valueLabel = 'Dist',
+  showThresholds = true,
 }) {
+  const chartData = data.map((point) => ({
+    ...point,
+    chartValue: point[valueKey],
+    valueUnit,
+    valueLabel,
+  }))
+  const xDomain = [
+    typeof domainStart === 'number' ? domainStart : chartData[0]?.time,
+    typeof domainEnd === 'number' ? domainEnd : chartData[chartData.length - 1]?.time,
+  ]
   const xTicks =
-    data.length >= 2
-      ? [data[0].time, data[data.length - 1].time]
-      : data.length === 1
-      ? [data[0].time]
+    xDomain[0] != null && xDomain[1] != null && xDomain[0] !== xDomain[1]
+      ? xDomain
+      : chartData.length === 1
+      ? [chartData[0].time]
       : []
 
-  if (data.length === 0) {
+  if (chartData.length === 0) {
     return (
       <div style={{
         height,
@@ -93,7 +121,7 @@ export default function DistanceChart({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 12,
-        color: '#334155',
+        color: '#64748B',
       }}>
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M2 12h2m2-7.071L7.757 6.686M12 2v2m4.243 1.929L17.314 6.686M22 12h-2m-2.757 4.243L15.314 17.314M12 22v-2m-4.243-2.757L5.686 15.314" />
@@ -104,43 +132,60 @@ export default function DistanceChart({
     )
   }
 
-  const distances = data.map((d) => d.distance).filter((v) => v != null)
-  const minD = Math.max(0, Math.min(...distances) - 10)
+  const distances = chartData.map((d) => d.chartValue).filter((v) => v != null)
+  if (distances.length === 0) {
+    return (
+      <div style={{
+        height,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#64748B',
+        fontSize: 14,
+      }}>
+        No chart values in this range.
+      </div>
+    )
+  }
+  const rawMin = Math.min(...distances)
+  const rawMax = Math.max(...distances)
+  const padding = showThresholds ? 10 : Math.max((rawMax - rawMin) * 0.15, 0.1)
+  const minD = Math.max(0, rawMin - padding)
   const maxD = Math.max(
-    ...distances,
-    exitThreshold != null ? exitThreshold + 10 : 0,
-    minD + 50,
+    rawMax + padding,
+    showThresholds && exitThreshold != null ? exitThreshold + 10 : 0,
+    minD + (showThresholds ? 50 : 1),
   )
 
-  const blockingRanges = getBlockingRanges(data)
+  const blockingRanges = getBlockingRanges(chartData)
 
-  const windowStart = data[0].time
-  const windowEnd   = data[data.length - 1].time
+  const windowStart = xDomain[0] ?? chartData[0].time
+  const windowEnd   = xDomain[1] ?? chartData[chartData.length - 1].time
   const visibleEvents = eventTimes.filter((t) => t >= windowStart && t <= windowEnd)
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={data} margin={{ top: 12, right: 24, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="4 4" stroke="#1a2234" vertical={false} />
+      <ComposedChart data={chartData} margin={{ top: 12, right: 24, left: 0, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="4 4" stroke="#E2E8F0" vertical={false} />
 
         <XAxis
           dataKey="time"
           type="number"
           scale="time"
-          domain={['dataMin', 'dataMax']}
+          domain={xDomain[0] != null && xDomain[1] != null ? xDomain : ['dataMin', 'dataMax']}
           ticks={xTicks}
-          tickFormatter={fmtTime}
-          tick={{ fill: '#475569', fontSize: 11 }}
+          tickFormatter={fmtAxisTime}
+          tick={{ fill: '#64748B', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
           tickLine={false}
-          axisLine={{ stroke: '#1e293b' }}
+          axisLine={{ stroke: '#E2E8F0' }}
         />
         <YAxis
           domain={[minD, maxD]}
-          tick={{ fill: '#475569', fontSize: 11 }}
+          tick={{ fill: '#64748B', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
           tickLine={false}
-          axisLine={{ stroke: '#1e293b' }}
+          axisLine={{ stroke: '#E2E8F0' }}
           width={48}
-          unit="cm"
+          unit={valueUnit}
         />
 
         <Tooltip content={<ChartTooltip />} />
@@ -151,21 +196,21 @@ export default function DistanceChart({
             key={`block-${i}`}
             x1={r.x1}
             x2={r.x2}
-            fill="#f9731620"
-            stroke="#f9731640"
+            fill="#f9731618"
+            stroke="#f9731630"
             strokeWidth={1}
           />
         ))}
 
         {/* Enter threshold — object detected below this */}
-        {enterThreshold != null && (
+        {showThresholds && enterThreshold != null && (
           <ReferenceLine
             y={enterThreshold}
             stroke="#f97316"
             strokeDasharray="7 4"
             strokeWidth={1.5}
             label={{
-              value: `Enter ${enterThreshold}cm`,
+              value: `Enter ${enterThreshold}${valueUnit}`,
               position: 'insideTopRight',
               fill: '#f97316',
               fontSize: 11,
@@ -176,14 +221,14 @@ export default function DistanceChart({
         )}
 
         {/* Exit threshold — count triggers when rising above this */}
-        {exitThreshold != null && (
+        {showThresholds && exitThreshold != null && (
           <ReferenceLine
             y={exitThreshold}
             stroke="#22c55e"
             strokeDasharray="7 4"
             strokeWidth={1.5}
             label={{
-              value: `Exit ${exitThreshold}cm`,
+              value: `Exit ${exitThreshold}${valueUnit}`,
               position: 'insideTopRight',
               fill: '#22c55e',
               fontSize: 11,
@@ -213,11 +258,11 @@ export default function DistanceChart({
 
         <Line
           type="monotone"
-          dataKey="distance"
-          stroke="#22d3ee"
-          strokeWidth={2}
+          dataKey="chartValue"
+          stroke="#0052FF"
+          strokeWidth={3}
           dot={false}
-          activeDot={{ r: 5, fill: '#22d3ee', stroke: '#0e7490', strokeWidth: 2 }}
+          activeDot={{ r: 5, fill: '#0052FF', stroke: '#ffffff', strokeWidth: 3 }}
           isAnimationActive={false}
           connectNulls
         />

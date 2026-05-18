@@ -2,36 +2,77 @@ import { useState, useEffect, useCallback } from 'react'
 
 const DEFAULTS = {
   running:        true,
-  sampleHz:       8,
+  sampleHz:       20,
   enterThreshold: 20.0,
   exitThreshold:  40.0,
-  stableSamples:  3,
-  debounceMs:     500,
+  heartbeatSec:   10,
+  clearThreshold: 40.0,
+  jamTimeoutSec: 30,
+  jamEscalateTimeoutSec: 120,
+  distanceOfflineTimeoutSec: 10,
+  voltageOffThreshold: 1.0,
+  voltageIdleThreshold: 12.0,
+  voltageErrorThreshold: 28.5,
+  voltageSmoothingWindow: 8,
+  voltageOfflineTimeoutSec: 10,
+  preferSensor: 'distance',
 }
 
-export function useDeviceConfig(latestData, calibration, publish) {
+export function useDeviceConfig(statusData, publish, updateRuntimeConfig) {
   const [config, setConfig] = useState(DEFAULTS)
 
-  // Mirror values reported by ESP32
+  // Mirror low-frequency config status reported by ESP32.
   useEffect(() => {
-    if (!latestData) return
-    setConfig((prev) => ({
+    if (!statusData) return
+    const next = (prev) => ({
       ...prev,
-      sampleHz:       latestData.sampleHz       ?? prev.sampleHz,
-      enterThreshold: latestData.enterThreshold  ?? prev.enterThreshold,
-      exitThreshold:  latestData.exitThreshold   ?? prev.exitThreshold,
-      stableSamples:  latestData.stableSamples   ?? prev.stableSamples,
-    }))
+      running:        typeof statusData.running === 'boolean' ? statusData.running : prev.running,
+      sampleHz:       statusData.sampleHz       ?? prev.sampleHz,
+      enterThreshold: statusData.enterThreshold  ?? prev.enterThreshold,
+      exitThreshold:  statusData.exitThreshold   ?? prev.exitThreshold,
+      heartbeatSec:   statusData.heartbeatSec    ?? prev.heartbeatSec,
+      clearThreshold: statusData.clearThreshold ?? prev.clearThreshold,
+      jamTimeoutSec: statusData.jamTimeoutSec ?? prev.jamTimeoutSec,
+      jamEscalateTimeoutSec: statusData.jamEscalateTimeoutSec ?? prev.jamEscalateTimeoutSec,
+      distanceOfflineTimeoutSec: statusData.distanceOfflineTimeoutSec ?? prev.distanceOfflineTimeoutSec,
+      voltageOffThreshold: statusData.voltageOffThreshold ?? prev.voltageOffThreshold,
+      voltageIdleThreshold: statusData.voltageIdleThreshold ?? prev.voltageIdleThreshold,
+      voltageErrorThreshold: statusData.voltageErrorThreshold ?? prev.voltageErrorThreshold,
+      voltageSmoothingWindow: statusData.voltageSmoothingWindow ?? prev.voltageSmoothingWindow,
+      voltageOfflineTimeoutSec: statusData.voltageOfflineTimeoutSec ?? prev.voltageOfflineTimeoutSec,
+      preferSensor: statusData.preferSensor ?? prev.preferSensor,
+    })
+    setConfig((prev) => {
+      const updated = next(prev)
+      updateRuntimeConfig?.(updated)
+      return updated
+    })
   }, [
-    latestData?.sampleHz,
-    latestData?.enterThreshold,
-    latestData?.exitThreshold,
-    latestData?.stableSamples,
+    statusData?.running,
+    statusData?.sampleHz,
+    statusData?.enterThreshold,
+    statusData?.exitThreshold,
+    statusData?.heartbeatSec,
+    statusData?.clearThreshold,
+    statusData?.jamTimeoutSec,
+    statusData?.jamEscalateTimeoutSec,
+    statusData?.distanceOfflineTimeoutSec,
+    statusData?.voltageOffThreshold,
+    statusData?.voltageIdleThreshold,
+    statusData?.voltageErrorThreshold,
+    statusData?.voltageSmoothingWindow,
+    statusData?.voltageOfflineTimeoutSec,
+    statusData?.preferSensor,
+    updateRuntimeConfig,
   ])
 
   const sendConfig = useCallback(
-    (next) => { setConfig(next); publish(next) },
-    [publish]
+    (next) => {
+      setConfig(next)
+      updateRuntimeConfig?.(next)
+      publish(next)
+    },
+    [publish, updateRuntimeConfig]
   )
 
   return { config, sendConfig }

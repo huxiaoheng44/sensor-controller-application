@@ -1,30 +1,72 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { useMQTT } from '../hooks/useMQTT'
-import { useDeviceConfig } from '../hooks/useDeviceConfig'
+import { useMQTTContext } from '../context/MQTTContext'
 import DistanceChart from '../components/DistanceChart'
 import './TabletView.css'
+
+const HISTORY_RANGE_OPTIONS = [
+  { value: 60_000, label: '1 min' },
+  { value: 10 * 60_000, label: '10 min' },
+  { value: 60 * 60_000, label: '1 hour' },
+  { value: 24 * 60 * 60_000, label: '24 hours' },
+]
+
+const VOLTAGE_PRESETS = [
+  { label: 'Off', value: 0 },
+  { label: 'Idle', value: 5 },
+  { label: 'Normal', value: 24 },
+  { label: 'Abnormal', value: 28.5 },
+]
 
 function fmtTime(ts) {
   if (!ts) return '—'
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false })
 }
 
+function formatStatus(status) {
+  const normalized = String(status ?? '').toUpperCase()
+  const labels = {
+    RUNNING: 'Running',
+    IDLE: 'Idle',
+    JAM: 'Blocked',
+    ERROR: 'Error',
+    WARNING: 'Warning',
+    MACHINE_OFF: 'Machine Off',
+    CONNECTION_LOST: 'Connection Lost',
+    OFF: 'Off',
+    OBJECT_ENTERING: 'Object Entering',
+    OBJECT_PASSING: 'Object Passing',
+  }
+  return labels[normalized] ?? (status ? String(status).replaceAll('_', ' ') : 'Waiting')
+}
+
+function statusSeverity(status, warnings = []) {
+  const normalized = String(status ?? '').toUpperCase()
+  if (normalized === 'ERROR' || normalized === 'CONNECTION_LOST') return 'danger'
+  if (normalized === 'JAM' || normalized === 'WARNING' || warnings?.length) return 'warning'
+  if (normalized === 'RUNNING' || normalized === 'OBJECT_ENTERING' || normalized === 'OBJECT_PASSING') return 'success'
+  return 'neutral'
+}
+
 export default function TabletView() {
   const {
     connected, connecting,
-    distanceHistory, latestData,
+    distanceHistory, currentSnapshotHistory, latestData, currentSnapshot,
+    machineSnapshot,
     counter, frequency, eventTimes,
     lastDataTime,
-    deviceHealth,
-    calibration, publish, resetCounter,
-    triggerCalibration, resetCalibration,
-  } = useMQTT()
-
-  const { config, sendConfig } = useDeviceConfig(latestData, calibration, publish)
+    resetCounter,
+    setSimulatedVoltage,
+    config, sendConfig,
+    sensorConnections,
+    exportMQTTLog,
+  } = useMQTTContext()
 
   const [frozenHistory, setFrozenHistory] = useState(null)
+  const [activeSensorId, setActiveSensorId] = useState('distance')
   const [activeTab, setActiveTab] = useState('monitor')
+  const [distanceRangeMs, setDistanceRangeMs] = useState(60_000)
+  const [currentRangeMs, setCurrentRangeMs] = useState(60_000)
   const [, setTick] = useState(0)
   const prevRunningRef = useRef(true)
 
@@ -42,37 +84,36 @@ export default function TabletView() {
     prevRunningRef.current = config.running
   }, [config.running]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const distance   = latestData?.distance      ?? null
-  const isBlocking = latestData?.objectBlocking ?? false
-  const staleSecs  = lastDataTime ? Math.floor((Date.now() - lastDataTime) / 1000) : null
-  const isStale    = staleSecs !== null && staleSecs > 5
-  const chartData  = frozenHistory ?? distanceHistory
-  const connColor  = connected ? '#22c55e' : connecting ? '#f59e0b' : '#ef4444'
-  const connLabel  = connected ? 'Connected' : connecting ? 'Connecting…' : 'Offline'
-  const healthAgeSecs = deviceHealth.ageMs != null ? Math.floor(deviceHealth.ageMs / 1000) : null
-
-  const healthMeta = {
-    online: { label: 'Device Online', color: '#22c55e' },
-    degraded: { label: 'Heartbeat Delayed', color: '#f59e0b' },
-    device_offline: { label: 'Device Offline', color: '#ef4444' },
-    broker_offline: { label: 'Broker Offline', color: '#ef4444' },
-    waiting: { label: 'Waiting Heartbeat', color: '#64748b' },
-  }[deviceHealth.status]
+  const distance = latestData?.distance ?? null
+  const fusedStatus = machineSnapshot?.status ?? null
+  const fusedWarnings = Array.isArray(machineSnapshot?.warnings) ? machineSnapshot.warnings : []
+  const distanceStatus = fusedStatus ?? latestData?.distanceState ?? (latestData?.objectBlocking ? 'JAM' : null)
+  const currentStatus = fusedStatus ?? currentSnapshot?.voltageStatus ?? currentSnapshot?.machineStatus ?? null
+  const isBlocking = fusedStatus === 'JAM' || latestData?.objectBlocking === true
+  const statusSource = machineSnapshot?.source ? `Source: ${machineSnapshot.source}` : 'Sensor derived'
+  const staleSecs = lastDataTime ? Math.floor((Date.now() - lastDataTime) / 1000) : null
+  const isStale = staleSecs !== null && staleSecs > 5
+  const currentSnapshotAgeSecs = currentSnapshot?.receivedAt
+    ? Math.floor((Date.now() - currentSnapshot.receivedAt) / 1000)
+    : null
+  const isCurrentSnapshotOnline = currentSnapshotAgeSecs !== null && currentSnapshotAgeSecs <= 5
+  const now = Date.now()
+  const chartData = (frozenHistory ?? distanceHistory).filter((point) => now - point.time <= distanceRangeMs)
+  const chartEvents = eventTimes.filter((time) => now - time <= distanceRangeMs)
+  const currentChartData = currentSnapshotHistory.filter((point) => now - point.time <= currentRangeMs)
+  const activeSensor = sensorConnections.find((sensor) => sensor.id === activeSensorId) ?? sensorConnections[0]
 
   return (
     <div className="tv">
 
       {/* ── Header ── */}
       <header className="tv-header">
-        <div className="tv-conn" style={{ '--cc': connColor }}>
-          <span className="tv-conn-dot" />
-          <span className="tv-conn-label">{connLabel}</span>
-        </div>
-        <div className="tv-health" style={{ '--hc': healthMeta.color }}>
-          <span className="tv-health-dot" />
-          <span>{healthMeta.label}</span>
-          {healthAgeSecs != null && <span className="tv-health-age">{healthAgeSecs}s</span>}
-        </div>
+        <TabletSensorSwitcher
+          sensors={sensorConnections}
+          activeSensorId={activeSensor.id}
+          connecting={connecting}
+          onSelect={setActiveSensorId}
+        />
         <div className={`tv-lastseen${isStale ? ' tv-stale' : ''}`}>
           {lastDataTime
             ? isStale ? `No data · ${staleSecs}s ago` : `Last · ${fmtTime(lastDataTime)}`
@@ -82,27 +123,29 @@ export default function TabletView() {
       </header>
 
       {/* ── Tab bar ── */}
-      <nav className="tv-tabbar">
-        {[
-          { id: 'monitor',  label: 'Monitor',  icon: <ChartTabIcon /> },
-          { id: 'settings', label: 'Settings', icon: <SlidersTabIcon /> },
-        ].map(({ id, label, icon }) => (
-          <button
-            key={id}
-            className={`tv-tab${activeTab === id ? ' tv-tab--active' : ''}`}
-            onClick={() => setActiveTab(id)}
-          >
-            {icon}
-            <span>{label}</span>
-          </button>
-        ))}
-      </nav>
+      {activeSensor.id === 'distance' && (
+        <nav className="tv-tabbar">
+          {[
+            { id: 'monitor', label: 'Monitor', icon: <ChartTabIcon /> },
+            { id: 'settings', label: 'Settings', icon: <SlidersTabIcon /> },
+          ].map(({ id, label, icon }) => (
+            <button
+              key={id}
+              className={`tv-tab${activeTab === id ? ' tv-tab--active' : ''}`}
+              onClick={() => setActiveTab(id)}
+            >
+              {icon}
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
 
       {/* ── Tab body ── */}
       <div className="tv-body">
 
         {/* ─── Monitor tab ─── */}
-        {activeTab === 'monitor' && (
+        {activeSensor.id === 'distance' && activeTab === 'monitor' && (
           <div className="tv-monitor">
 
             <div className="tv-metrics">
@@ -112,10 +155,13 @@ export default function TabletView() {
                   {distance != null ? distance.toFixed(1) : '—'}
                 </div>
                 <div className="tv-mcard-unit">cm</div>
-                {isBlocking
-                  ? <div className="tv-badge tv-badge--orange"><span className="tv-pulse" />Blocking</div>
-                  : <div className="tv-badge tv-badge--dim">Sensor clear</div>
-                }
+                <div className={`tv-badge tv-badge--${statusSeverity(distanceStatus, fusedWarnings)}`}>
+                  {isBlocking && <span className="tv-pulse" />}
+                  {isBlocking ? 'Blocked' : formatStatus(distanceStatus ?? 'IDLE')}
+                </div>
+                <div className="tv-mcard-note">
+                  {fusedStatus ? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}` : 'Distance sensor'}
+                </div>
               </div>
 
               <div className="tv-mcard">
@@ -131,27 +177,43 @@ export default function TabletView() {
                 <div className="tv-mcard-unit">pcs / min</div>
                 <div className="tv-mcard-note">Last 60 s</div>
               </div>
+
             </div>
 
             <div className="tv-chart-wrap">
               <div className="tv-chart-bar">
                 <span className="tv-chart-title">
-                  Live Distance — last 60 s
+                  Live Distance
                   {!config.running && <span className="tv-paused">PAUSED</span>}
                 </span>
                 <div className="tv-legend">
-                  <span><span style={{ color: '#f97316' }}>--</span>&ensp;Enter</span>
-                  <span><span style={{ color: '#22c55e' }}>--</span>&ensp;Exit</span>
-                  <span><span style={{ color: '#f97316' }}>█</span>&ensp;Blocking</span>
-                  <span><span style={{ color: '#ef4444' }}>│</span>&ensp;Count</span>
+                  <select
+                    className="tv-chart-select"
+                    value={distanceRangeMs}
+                    onChange={(e) => setDistanceRangeMs(Number(e.target.value))}
+                    aria-label="Distance chart time range"
+                  >
+                    {HISTORY_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <span><span style={{ color: '#f97316' }}>--</span >&ensp;Enter</span>
+                  <span><span style={{ color: '#22c55e' }}>--</span >&ensp;Exit</span>
+                  <span><span style={{ color: '#f97316' }}>█</span >&ensp;Blocking</span>
+                  <span><span style={{ color: '#ef4444' }}>│</span >&ensp;Count</span>
+                  <button type="button" className="tv-chart-export" onClick={exportMQTTLog}>
+                    <DownloadIcon /> Export Log
+                  </button>
                 </div>
               </div>
               <div className="tv-chart-inner">
                 <DistanceChart
                   data={chartData}
-                  eventTimes={eventTimes}
+                  eventTimes={chartEvents}
                   enterThreshold={config.enterThreshold}
                   exitThreshold={config.exitThreshold}
+                  domainStart={now - distanceRangeMs}
+                  domainEnd={now}
                   height="100%"
                 />
               </div>
@@ -161,38 +223,40 @@ export default function TabletView() {
         )}
 
         {/* ─── Settings tab ─── */}
-        {activeTab === 'settings' && (
+        {activeSensor.id === 'distance' && activeTab === 'settings' && (
           <div className="tv-settings">
 
             {/* Start/Stop */}
             <div className="tv-action-card tv-action--run">
-              <div className="tv-ctrl-label">Detection</div>
-              <button
-                className={`tv-big-btn${config.running ? ' tv-big-btn--stop' : ' tv-big-btn--start'}`}
-                onClick={() => sendConfig({ ...config, running: !config.running })}
-                disabled={!connected}
-              >
-                {config.running ? '■  Stop' : '▶  Start'}
-              </button>
+              <div className="tv-action-head">
+                <div>
+                  <div className="tv-ctrl-label">Detection</div>
+                  <div className={`tv-run-status${config.running ? ' tv-run-status--running' : ' tv-run-status--stopped'}`}>
+                    <span />
+                    {config.running ? 'Running' : 'Stopped'}
+                  </div>
+                </div>
+                <button
+                  className={`tv-big-btn${config.running ? ' tv-big-btn--stop' : ' tv-big-btn--start'}`}
+                  onClick={() => sendConfig({ ...config, running: !config.running })}
+                  disabled={!connected}
+                >
+                  {config.running ? 'Stop' : 'Start'}
+                </button>
+              </div>
               <p className="tv-ctrl-hint">
-                {config.running ? 'Counting. Tap to pause.' : 'Stopped. Tap to start.'}
+                {config.running ? 'Counting is active. Pause only when changing the line setup.' : 'Counting is paused. Start when the sensor is ready.'}
               </p>
             </div>
 
-            {/* Calibration */}
-            <div className="tv-action-card tv-action--calib">
-              <div className="tv-ctrl-label">Calibration</div>
-              <button
-                className={`tv-big-btn tv-big-btn--calib${calibration.status === 'in_progress' ? ' tv-big-btn--busy' : ''}`}
-                onClick={triggerCalibration}
-                disabled={!connected || calibration.status === 'in_progress'}
-              >
-                {calibration.status === 'in_progress'
-                  ? <><SpinSvg /> Calibrating…</>
-                  : <><TargetSvg /> Calibrate Now</>}
-              </button>
-              <CalibStatus calibration={calibration} onDismiss={resetCalibration} />
-              <p className="tv-ctrl-hint">Clear path first. Resets state machine.</p>
+            <div className="tv-action-card tv-action-card--summary">
+              <div className="tv-ctrl-label">Current Setup</div>
+              <div className="tv-setup-list">
+                <div><span>Enter</span><strong>{config.enterThreshold} cm</strong></div>
+                <div><span>Exit</span><strong>{config.exitThreshold} cm</strong></div>
+                <div><span>Clear</span><strong>{config.clearThreshold} cm</strong></div>
+                <div><span>Rate</span><strong>{config.sampleHz} Hz</strong></div>
+              </div>
             </div>
 
             {/* Enter Threshold */}
@@ -213,12 +277,12 @@ export default function TabletView() {
               alt
             />
 
-            {/* Stable Samples */}
+            {/* Clear Threshold */}
             <SliderCard
-              label="Stable Samples" value={config.stableSamples} unit=""
-              min={1} max={10} step={1} disabled={!connected}
-              onChange={(v) => sendConfig({ ...config, stableSamples: v })}
-              hint="Consecutive readings to change state"
+              label="Clear Threshold" value={config.clearThreshold} unit="cm"
+              min={5} max={200} step={0.5} disabled={!connected}
+              onChange={(v) => sendConfig({ ...config, clearThreshold: v })}
+              hint="Bridge clear threshold"
               alt
             />
 
@@ -231,19 +295,134 @@ export default function TabletView() {
               alt
             />
 
-            {/* Debounce */}
-            <SliderCard
-              label="Debounce" value={config.debounceMs} unit="ms"
-              min={50} max={2000} step={50} disabled={!connected}
-              onChange={(v) => sendConfig({ ...config, debounceMs: v })}
-              hint="Cooldown between counts"
-              alt
-            />
-
           </div>
         )}
 
+        {activeSensor.id === 'current' && (
+          <div className="tv-settings tv-settings--current">
+            <div className="tv-current-overview">
+              <div className="tv-mcard-label">Current Sensor</div>
+              <div className="tv-mcard-num">
+                {currentSnapshot?.voltage != null ? currentSnapshot.voltage.toFixed(2) : '—'}
+              </div>
+              <div className="tv-mcard-unit">V</div>
+              <div className={`tv-badge tv-badge--${statusSeverity(currentStatus ?? (isCurrentSnapshotOnline ? 'RUNNING' : 'OFF'), fusedWarnings)}`}>
+                {formatStatus(currentStatus ?? (isCurrentSnapshotOnline ? 'RUNNING' : 'OFF'))}
+              </div>
+              <div className="tv-mcard-note">
+                {fusedStatus ? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}` : 'Voltage sensor'}
+              </div>
+            </div>
+
+            <div className="tv-chart-wrap tv-current-chart-wrap">
+              <div className="tv-chart-bar">
+                <span className="tv-chart-title">Live Voltage</span>
+                <div className="tv-chart-actions">
+                  <select
+                    className="tv-chart-select"
+                    value={currentRangeMs}
+                    onChange={(e) => setCurrentRangeMs(Number(e.target.value))}
+                    aria-label="Voltage chart time range"
+                  >
+                    {HISTORY_RANGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="tv-chart-export" onClick={exportMQTTLog}>
+                    <DownloadIcon /> Export Log
+                  </button>
+                </div>
+              </div>
+              <div className="tv-chart-inner">
+                <DistanceChart
+                  data={currentChartData}
+                  eventTimes={[]}
+                  valueKey="voltage"
+                  valueUnit="V"
+                  valueLabel="Voltage"
+                  showThresholds={false}
+                  domainStart={now - currentRangeMs}
+                  domainEnd={now}
+                  height="100%"
+                />
+              </div>
+            </div>
+
+            <div className="tv-current-card">
+              <div className="tv-ctrl-label">Snapshot</div>
+              <div className="tv-snapshot-rows">
+                <div><span>Reason</span><strong>{currentSnapshot?.reason ?? '—'}</strong></div>
+                <div><span>Uptime</span><strong>{currentSnapshot?.uptime != null ? `${currentSnapshot.uptime}s` : '—'}</strong></div>
+                <div><span>Device TS</span><strong>{currentSnapshot?.ts ?? '—'}</strong></div>
+                <div><span>Received</span><strong>{currentSnapshot?.receivedAt ? fmtTime(currentSnapshot.receivedAt) : '—'}</strong></div>
+              </div>
+            </div>
+
+            <div className="tv-current-card">
+              <div className="tv-ctrl-label">Set simulated voltage</div>
+              <div className="tv-preset-grid">
+                {VOLTAGE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className="tv-preset-btn"
+                    onClick={() => setSimulatedVoltage(preset.value)}
+                    disabled={!connected}
+                  >
+                    <span>{preset.label}</span>
+                    <strong>{preset.value.toFixed(preset.value % 1 === 0 ? 0 : 1)} V</strong>
+                  </button>
+                ))}
+              </div>
+              <p className="tv-ctrl-hint">
+                {currentSnapshot?.simulated ? 'Simulated voltage source' : 'Live voltage source'}
+              </p>
+            </div>
+
+            <div className="tv-current-card tv-current-card--wide">
+              <div className="tv-chart-bar tv-snapshot-bar">
+                <span className="tv-chart-title">Raw Snapshot</span>
+                <button type="button" className="tv-chart-export" onClick={exportMQTTLog}>
+                  <DownloadIcon /> Export Log
+                </button>
+              </div>
+              <pre className="tv-snapshot-json">{JSON.stringify(currentSnapshot ?? {}, null, 2)}</pre>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function TabletSensorSwitcher({ sensors, activeSensorId, connecting, onSelect }) {
+  const hasAnySensor = sensors.some((sensor) => sensor.connected || sensor.stale)
+
+  return (
+    <div className="tv-sensor-switcher">
+      {!hasAnySensor && (
+        <span className="tv-sensor-empty">{connecting ? 'Waiting sensors...' : 'No sensor data'}</span>
+      )}
+      {sensors.map((sensor) => {
+        const stateClass = sensor.connected
+          ? ' tv-sensor-chip--online'
+          : sensor.stale
+            ? ' tv-sensor-chip--stale'
+            : ''
+        return (
+          <button
+            key={sensor.id}
+            type="button"
+            className={`tv-sensor-chip${activeSensorId === sensor.id ? ' tv-sensor-chip--active' : ''}${stateClass}`}
+            onClick={() => onSelect(sensor.id)}
+            title={sensor.connected ? `${sensor.label} connected` : sensor.stale ? `${sensor.label} signal timeout` : `${sensor.label} offline`}
+          >
+            <span className="tv-sensor-dot" />
+            <ChipIcon />
+            <span>{sensor.label}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -253,7 +432,7 @@ export default function TabletView() {
 ═══════════════════════════════════════ */
 function SliderCard({ label, value, unit, min, max, step, disabled, onChange, hint, alt }) {
   const isInt = step === 1 || unit === 'ms'
-  const pct   = ((value - min) / (max - min)) * 100
+  const pct = ((value - min) / (max - min)) * 100
 
   return (
     <div className="tv-slider-card">
@@ -283,34 +462,6 @@ function SliderCard({ label, value, unit, min, max, step, disabled, onChange, hi
 }
 
 /* ═══════════════════════════════════════
-   Calibration status banner
-═══════════════════════════════════════ */
-function CalibStatus({ calibration, onDismiss }) {
-  const { status, baseline } = calibration
-  if (status === 'idle') return null
-
-  if (status === 'in_progress') return (
-    <div className="tv-calib-prog">
-      <div className="tv-calib-bar"><div className="tv-calib-fill" /></div>
-      <span>Resetting state machine…</span>
-    </div>
-  )
-
-  return (
-    <div className={`tv-calib-result${status === 'done' ? ' tv-calib-result--ok' : ' tv-calib-result--err'}`}>
-      <span>
-        {status === 'done'
-          ? baseline != null
-            ? <>✓ Done — new baseline <strong>{baseline?.toFixed(1)} cm</strong></>
-            : '✓ Done — state reset'
-          : '⚠ No response from device'}
-      </span>
-      <button className="tv-calib-x" onClick={onDismiss}>×</button>
-    </div>
-  )
-}
-
-/* ═══════════════════════════════════════
    Icons
 ═══════════════════════════════════════ */
 function MonitorIcon() {
@@ -318,6 +469,23 @@ function MonitorIcon() {
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17">
       <rect x="2" y="3" width="16" height="11" rx="2" />
       <path d="M7 17h6M10 14v3" />
+    </svg>
+  )
+}
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17">
+      <path d="M10 3v9" />
+      <path d="M6 8l4 4 4-4" />
+      <path d="M4 16h12" />
+    </svg>
+  )
+}
+function ChipIcon() {
+  return (
+    <svg className="tv-sensor-chip-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="5" y="5" width="10" height="10" rx="1.5" />
+      <path d="M2 7h3M2 10h3M2 13h3M15 7h3M15 10h3M15 13h3M7 2v3M10 2v3M13 2v3M7 15v3M10 15v3M13 15v3" />
     </svg>
   )
 }
@@ -332,27 +500,10 @@ function ChartTabIcon() {
 function SlidersTabIcon() {
   return (
     <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-      <line x1="3" y1="7"  x2="19" y2="7"  />
-      <circle cx="8"  cy="7"  r="2.5" fill="currentColor" stroke="none" />
+      <line x1="3" y1="7" x2="19" y2="7" />
+      <circle cx="8" cy="7" r="2.5" fill="currentColor" stroke="none" />
       <line x1="3" y1="15" x2="19" y2="15" />
       <circle cx="14" cy="15" r="2.5" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-function TargetSvg() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="20" height="20">
-      <circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="3" />
-      <line x1="10" y1="1" x2="10" y2="4" /><line x1="10" y1="16" x2="10" y2="19" />
-      <line x1="1"  y1="10" x2="4"  y2="10" /><line x1="16" y1="10" x2="19" y2="10" />
-    </svg>
-  )
-}
-function SpinSvg() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2"
-      width="20" height="20" style={{ animation: 'tv-spin 1s linear infinite', flexShrink: 0 }}>
-      <circle cx="10" cy="10" r="7" strokeDasharray="22 22" strokeLinecap="round" />
     </svg>
   )
 }
