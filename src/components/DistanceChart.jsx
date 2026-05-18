@@ -25,6 +25,21 @@ function fmtAxisTime(ts) {
   })
 }
 
+function niceYTicks(minVal, maxVal, approxCount = 5) {
+  const range = maxVal - minVal || 1
+  const rawStep = range / (approxCount - 1)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)))
+  const normalized = rawStep / magnitude
+  const step = ([1, 2, 5, 10].find((s) => s >= normalized) ?? 10) * magnitude
+  const niceMin = Math.floor(minVal / step) * step
+  const niceMax = Math.ceil(maxVal / step) * step
+  const ticks = []
+  for (let v = niceMin; v <= niceMax + step * 0.001; v += step) {
+    ticks.push(Math.round(v * 100) / 100)
+  }
+  return ticks
+}
+
 function getBlockingRanges(data) {
   const ranges = []
   let start = null
@@ -157,6 +172,10 @@ export default function DistanceChart({
     minD + (showThresholds ? 50 : 1),
   )
 
+  const yTicks = niceYTicks(minD, maxD)
+  const yDomainMin = yTicks[0]
+  const yDomainMax = yTicks[yTicks.length - 1]
+
   const blockingRanges = getBlockingRanges(chartData)
 
   const windowStart = xDomain[0] ?? chartData[0].time
@@ -180,7 +199,8 @@ export default function DistanceChart({
           axisLine={{ stroke: '#E2E8F0' }}
         />
         <YAxis
-          domain={[minD, maxD]}
+          domain={[yDomainMin, yDomainMax]}
+          ticks={yTicks}
           tick={{ fill: '#64748B', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
           tickLine={false}
           axisLine={{ stroke: '#E2E8F0' }}

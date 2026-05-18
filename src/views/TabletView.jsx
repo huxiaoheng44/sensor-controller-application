@@ -71,12 +71,25 @@ export default function TabletView() {
   const [distanceRangeMs, setDistanceRangeMs] = useState(60_000)
   const [currentRangeMs, setCurrentRangeMs] = useState(60_000)
   const [, setTick] = useState(0)
+  const [statusTipOpen, setStatusTipOpen] = useState(false)
+  const statusTipRef = useRef(null)
   const prevRunningRef = useRef(true)
 
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [])
+
+  useEffect(() => {
+    if (!statusTipOpen) return
+    function close(e) {
+      if (statusTipRef.current && !statusTipRef.current.contains(e.target)) {
+        setStatusTipOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [statusTipOpen])
 
   useEffect(() => {
     if (prevRunningRef.current && !config.running) {
@@ -161,12 +174,27 @@ export default function TabletView() {
                   {distance != null ? distance.toFixed(1) : '—'}
                 </div>
                 <div className="tv-mcard-unit">cm</div>
-                <div className={`tv-badge tv-badge--${statusSeverity(distanceDisplayStatus, fusedWarnings)}`}>
-                  {isBlocking && <span className="tv-pulse" />}
-                  {isBlocking ? 'Blocked' : formatStatus(distanceDisplayStatus)}
-                </div>
-                <div className="tv-mcard-note">
-                  {fusedStatus ? (machineSnapshot?.description ?? `${statusSource}${machineSnapshot?.confidence ? ` · ${machineSnapshot.confidence}` : ''}`) : 'Distance sensor'}
+                <div
+                  className="tv-badge-wrap"
+                  ref={statusTipRef}
+                  onMouseLeave={() => setStatusTipOpen(false)}
+                >
+                  <div
+                    className={`tv-badge tv-badge--${statusSeverity(distanceDisplayStatus, fusedWarnings)}${machineSnapshot?.description ? ' tv-badge--tip' : ''}`}
+                    onClick={() => machineSnapshot?.description && setStatusTipOpen((v) => !v)}
+                    onMouseEnter={() => machineSnapshot?.description && setStatusTipOpen(true)}
+                    role={machineSnapshot?.description ? 'button' : undefined}
+                    tabIndex={machineSnapshot?.description ? 0 : undefined}
+                  >
+                    {isBlocking && <span className="tv-pulse" />}
+                    {isBlocking ? 'Blocked' : formatStatus(distanceDisplayStatus)}
+                    {machineSnapshot?.description && <InfoIcon />}
+                  </div>
+                  {statusTipOpen && machineSnapshot?.description && (
+                    <div className="tv-status-tip" role="tooltip">
+                      {machineSnapshot.description}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -470,6 +498,15 @@ function SliderCard({ label, value, unit, min, max, step, disabled, onChange, hi
 /* ═══════════════════════════════════════
    Icons
 ═══════════════════════════════════════ */
+function InfoIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14" style={{ flexShrink: 0, opacity: 0.7 }}>
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 7v4" strokeLinecap="round" />
+      <circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
 function MonitorIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17">
