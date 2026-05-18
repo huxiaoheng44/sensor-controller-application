@@ -7,32 +7,37 @@ function formatHHMM(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
 }
 
-function timeAgo(ts) {
-  if (!ts) return '—'
-  const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 5)   return 'just now'
-  if (diff < 60)  return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  return `${Math.floor(diff / 3600)}h ago`
-}
-
 const ACCURACY_ROWS = [
-  { label: 'Jam Detection',   pct: 91, delta: '+7%',  trend: 'up' },
-  { label: 'Idle Detection',  pct: 88, delta: '+3%',  trend: 'up' },
-  { label: 'Error Detection', pct: 76, delta: '+12%', trend: 'up' },
+  { label: 'Jam Detection',   pct: 91, delta: '+7%'  },
+  { label: 'Idle Detection',  pct: 88, delta: '+3%'  },
+  { label: 'Error Detection', pct: 76, delta: '+12%' },
+]
+
+const MODEL_INFO = [
+  { label: 'Model Type',   value: 'Rule-based + Heuristic' },
+  { label: 'Input',        value: 'Distance + Timing'      },
+  { label: 'Latency',      value: '< 50ms'                 },
+  { label: 'Last Updated', value: 'This session'           },
+]
+
+const MOCK_EVENTS = [
+  { id: 'm1', time: '10:31', event: 'Throughput unstable',    dot: 'warn',    badge: { cls: 'warning', label: 'WARNING' }, fb: null },
+  { id: 'm2', time: '10:33', event: 'Current spike detected', dot: 'warn',    badge: { cls: 'warning', label: 'WARNING' }, fb: null },
+  { id: 'm3', time: '10:34', event: 'Possible jam detected',  dot: 'jam',     badge: { cls: 'jam',     label: 'JAM'     }, fb: null },
+  { id: 'm4', time: '10:35', event: 'Operator confirmed jam', dot: 'ok',      badge: null,                                 fb: '✓ Confirmed' },
+  { id: 'm5', time: '10:36', event: 'AI confidence updated',  dot: 'neutral', badge: null,                                 fb: null },
 ]
 
 function dotClassForPred(pred) {
-  if (pred === 'JAM')     return 'warn'
+  if (pred === 'JAM')     return 'jam'
   if (pred === 'ERROR')   return 'danger'
   if (pred === 'WARNING') return 'warn'
   return 'neutral'
 }
 
-function predBadge(pred) {
-  if (!pred) return null
-  if (pred === 'JAM')     return { cls: 'jam',     label: 'JAM' }
-  if (pred === 'ERROR')   return { cls: 'error',   label: 'ERROR' }
+function badgeForPred(pred) {
+  if (pred === 'JAM')     return { cls: 'jam',     label: 'JAM'     }
+  if (pred === 'ERROR')   return { cls: 'error',   label: 'ERROR'   }
   if (pred === 'WARNING') return { cls: 'warning', label: 'WARNING' }
   return null
 }
@@ -46,7 +51,24 @@ export default function AICenterPage() {
   const corrections   = alerts.filter(a => a.state === 'wrong').length
   const pending       = alerts.filter(a => a.state === 'pending').length
 
-  const recentEntries = entries.slice(0, 20)
+  // Use real values or fall back to mock
+  const displayTotal       = totalFeedback > 0 ? totalFeedback : 142
+  const displayConfirmed   = totalFeedback > 0 ? confirmed     : 124
+  const displayCorrections = totalFeedback > 0 ? corrections   : 18
+
+  // Real timeline entries, fall back to mock if empty
+  const timelineItems = entries.length > 0
+    ? entries.slice(0, 20).map(e => ({
+        id:    e.id,
+        time:  formatHHMM(e.time),
+        event: e.event,
+        dot:   dotClassForPred(e.aiPrediction),
+        badge: badgeForPred(e.aiPrediction),
+        fb:    e.operatorFeedback
+               ? (e.operatorFeedback.type === 'confirm' ? '✓ Confirmed' : `✗ ${e.operatorFeedback.label}`)
+               : null,
+      }))
+    : MOCK_EVENTS
 
   return (
     <div className="aic">
@@ -55,60 +77,50 @@ export default function AICenterPage() {
       </div>
 
       <div className="aic-body">
-        {/* Left column */}
+        {/* ── Left column ── */}
         <div className="aic-left">
+
           {/* Detection Accuracy */}
           <div className="aic-card">
-            <p className="aic-card-title">Detection Accuracy</p>
-            {ACCURACY_ROWS.map(({ label, pct, delta, trend }) => (
-              <div key={label} className="aic-acc-row">
-                <span className="aic-acc-label">{label}</span>
-                <div className="aic-acc-bar-wrap">
-                  <div className="aic-acc-bar" style={{ width: `${pct}%` }} />
+            <p className="aic-card-label">Detection Accuracy</p>
+            <div className="aic-acc-list">
+              {ACCURACY_ROWS.map(({ label, pct, delta }) => (
+                <div key={label} className="aic-acc-row">
+                  <span className="aic-acc-name">{label}</span>
+                  <div className="aic-acc-track">
+                    <div className="aic-acc-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="aic-acc-pct">{pct}%</span>
+                  <span className="aic-acc-delta">{delta}</span>
                 </div>
-                <span className="aic-acc-pct">{pct}%</span>
-                <span className="aic-acc-delta">{delta}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {/* Operator Feedback */}
           <div className="aic-card">
-            <p className="aic-card-title">Operator Feedback</p>
-            <div className="aic-feedback-row">
-              <div className="aic-feedback-stat">
-                <div className="aic-feedback-num">
-                  {totalFeedback > 0 ? totalFeedback : '—'}
-                </div>
-                <div className="aic-feedback-label">Total Reviewed</div>
+            <p className="aic-card-label">Operator Feedback</p>
+            <div className="aic-fb-stats">
+              <div className="aic-fb-stat">
+                <span className="aic-fb-bar aic-fb-bar--total" />
+                <span className="aic-fb-num">{displayTotal}</span>
+                <span className="aic-fb-label">Total<br />Reviewed</span>
               </div>
-              <div className="aic-feedback-stat">
-                <div className="aic-feedback-num" style={{ color: 'var(--green)' }}>
-                  {confirmed > 0 ? confirmed : '—'}
-                </div>
-                <div className="aic-feedback-label">Confirmed</div>
+              <div className="aic-fb-stat">
+                <span className="aic-fb-bar aic-fb-bar--confirmed" />
+                <span className="aic-fb-num aic-fb-num--green">{displayConfirmed}</span>
+                <span className="aic-fb-label">Confirmed</span>
               </div>
-              <div className="aic-feedback-stat">
-                <div className="aic-feedback-num" style={{ color: 'var(--cyan)' }}>
-                  {corrections > 0 ? corrections : '—'}
-                </div>
-                <div className="aic-feedback-label">Corrections</div>
+              <div className="aic-fb-stat">
+                <span className="aic-fb-bar aic-fb-bar--corrections" />
+                <span className="aic-fb-num aic-fb-num--blue">{displayCorrections}</span>
+                <span className="aic-fb-label">Corrections</span>
               </div>
             </div>
-
             {pending > 0 && (
-              <div style={{
-                marginTop: 12,
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: '#ef444410',
-                border: '1px solid #ef444428',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--red)', flexShrink: 0, display: 'inline-block' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>
+              <div className="aic-pending-alert">
+                <span className="aic-pending-dot" />
+                <span className="aic-pending-text">
                   {pending} alert{pending > 1 ? 's' : ''} awaiting operator review
                 </span>
               </div>
@@ -117,55 +129,43 @@ export default function AICenterPage() {
 
           {/* Model Info */}
           <div className="aic-card">
-            <p className="aic-card-title">Model Info</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[
-                { label: 'Model Type',   value: 'Rule-based + Heuristic' },
-                { label: 'Input',        value: 'Distance + Timing' },
-                { label: 'Latency',      value: '< 50ms' },
-                { label: 'Last Updated', value: 'This session' },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>{label}</span>
-                  <span style={{ fontSize: 13, color: 'var(--text-dim)', fontWeight: 700 }}>{value}</span>
+            <p className="aic-card-label">Model Info</p>
+            <div className="aic-model-rows">
+              {MODEL_INFO.map(({ label, value }) => (
+                <div key={label} className="aic-model-row">
+                  <span className="aic-model-key">{label}</span>
+                  <span className="aic-model-val">{value}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Event Timeline */}
-        <div className="aic-timeline-wrap">
-          <div className="aic-timeline-header">
-            <p className="aic-card-title" style={{ margin: 0 }}>Event Timeline</p>
+        {/* ── Event Timeline ── */}
+        <div className="aic-timeline">
+          <div className="aic-timeline-head">
+            <p className="aic-card-label" style={{ margin: 0 }}>Event Timeline</p>
           </div>
           <div className="aic-timeline-list">
-            {recentEntries.length === 0 ? (
-              <div className="aic-empty">No events recorded yet</div>
-            ) : (
-              recentEntries.map((entry) => {
-                const dotCls  = dotClassForPred(entry.aiPrediction)
-                const badge   = predBadge(entry.aiPrediction)
-                const fb      = entry.operatorFeedback
-                return (
-                  <div key={entry.id} className="aic-timeline-item">
-                    <span className="aic-timeline-time">{formatHHMM(entry.time)}</span>
-                    <span className={`aic-timeline-dot aic-timeline-dot--${dotCls}`} />
-                    <span className="aic-timeline-event">{entry.event}</span>
-                    {badge && (
-                      <span className={`aic-timeline-pred aic-timeline-pred--${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    )}
-                    {fb && (
-                      <span className={`aic-timeline-feedback aic-timeline-feedback--${fb.type}`}>
-                        {fb.type === 'confirm' ? '✓ Confirmed' : `✗ ${fb.label}`}
-                      </span>
-                    )}
-                  </div>
-                )
-              })
-            )}
+            {timelineItems.map(item => (
+              <div key={item.id} className="aic-tl-row">
+                <span className="aic-tl-time">{item.time}</span>
+                <span className={`aic-tl-dot aic-tl-dot--${item.dot}`} />
+                <span className="aic-tl-event">{item.event}</span>
+                <div className="aic-tl-right">
+                  {item.fb && (
+                    <span className={`aic-tl-fb${item.fb.startsWith('✓') ? ' aic-tl-fb--ok' : ' aic-tl-fb--wrong'}`}>
+                      {item.fb}
+                    </span>
+                  )}
+                  {item.badge && (
+                    <span className={`aic-tl-badge aic-tl-badge--${item.badge.cls}`}>
+                      {item.badge.label}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
