@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MQTTProvider } from './context/MQTTContext.jsx'
 import './index.css'
 import App from './App.jsx'
-import TabletView from './views/TabletView.jsx'
+import TabletLayout from './views/TabletLayout.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')).render(
       <MQTTProvider>
         <Routes>
           <Route path="/"       element={<App />} />
-          <Route path="/tablet" element={<TabletView />} />
+          <Route path="/tablet" element={<TabletLayout />} />
           <Route path="*"       element={<Navigate to="/" replace />} />
         </Routes>
       </MQTTProvider>

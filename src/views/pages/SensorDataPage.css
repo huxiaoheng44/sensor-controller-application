@@ -1,0 +1,12 @@
+.sdp {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Override TabletView's full-viewport height so it fits inside the layout */
+.sdp .tv {
+  height: 100%;
+}

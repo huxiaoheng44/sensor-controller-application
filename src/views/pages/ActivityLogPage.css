@@ -1,0 +1,177 @@
+.alog {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Header ── */
+.alog-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  height: 64px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.alog-title {
+  font-size: clamp(20px, 1.8vw, 28px);
+  font-weight: 800;
+  color: var(--text);
+  margin: 0;
+  flex: 1;
+}
+
+.alog-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alog-select {
+  background: var(--bg);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: clamp(13px, 1vw, 16px);
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+.alog-clear-btn {
+  background: transparent;
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: clamp(13px, 1vw, 16px);
+  font-weight: 700;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.alog-clear-btn:hover {
+  color: var(--red);
+  border-color: #ef444440;
+}
+
+/* ── Table ── */
+.alog-body {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg);
+  padding: 16px 24px;
+}
+
+.alog-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.alog-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  text-align: left;
+  padding: 14px 18px;
+  font-size: clamp(12px, 0.95vw, 15px);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #aebfe0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.alog-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.alog-table tbody tr:last-child { border-bottom: none; }
+
+.alog-table tbody tr:hover {
+  background: var(--bg-card-alt);
+}
+
+.alog-table tbody td {
+  padding: 14px 18px;
+  color: var(--text-muted);
+  vertical-align: middle;
+  font-size: clamp(14px, 1.1vw, 17px);
+}
+
+.alog-td-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted) !important;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.alog-td-date {
+  color: var(--text-muted) !important;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.alog-td-event {
+  font-weight: 700;
+  color: var(--text-dim) !important;
+}
+
+.alog-pred {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 10px;
+  font-size: clamp(12px, 0.95vw, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.alog-pred--jam     { background: #f9731618; color: #f97316; }
+.alog-pred--error   { background: #ef444418; color: var(--red); }
+.alog-pred--warning { background: #f59e0b18; color: var(--yellow); }
+.alog-pred--machine_off,
+.alog-pred--idle    { background: #64748b18; color: var(--text-muted); }
+
+.alog-feedback {
+  font-size: clamp(13px, 1vw, 16px);
+  font-weight: 700;
+}
+
+.alog-feedback--confirm { color: var(--green); }
+.alog-feedback--wrong   { color: var(--cyan); }
+
+.alog-pending {
+  font-size: clamp(13px, 1vw, 16px);
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.alog-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: var(--text-muted);
+  font-size: clamp(15px, 1.2vw, 19px);
+  font-weight: 600;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
