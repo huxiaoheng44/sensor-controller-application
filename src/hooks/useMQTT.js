@@ -145,6 +145,7 @@ function readStoredState() {
       : []
 
     return {
+      config: isPlainObject(parsed.config) ? parsed.config : null,
       distanceHistory,
       currentSnapshotHistory,
       eventTimes,
@@ -184,7 +185,7 @@ export function useMQTT() {
   const [currentSnapshotHistory, setCurrentSnapshotHistory] = useState(storedInitial.currentSnapshotHistory ?? [])
   const [latestData, setLatestData]       = useState(storedInitial.latestData ?? null)
   const [currentSnapshot, setCurrentSnapshot] = useState(storedInitial.currentSnapshot ?? null)
-  const [statusData, setStatusData]       = useState(null)
+  const [statusData, setStatusData]       = useState(storedInitial.config ?? null)
   const [configAck, setConfigAck]         = useState(null)
   const [counter, setCounter]             = useState(storedInitial.counter ?? 0)
   const [eventTimes, setEventTimes]       = useState(storedInitial.eventTimes ?? [])
@@ -207,7 +208,7 @@ export function useMQTT() {
   const [machineSnapshot, setMachineSnapshot] = useState(null)
 
   const clientRef      = useRef(null)
-  const configRef      = useRef(DEFAULT_CONFIG)
+  const configRef      = useRef(storedInitial.config ?? DEFAULT_CONFIG)
   const counterRef     = useRef(storedInitial.counter ?? 0)
   const lastItemCountRef = useRef(storedInitial.counter ?? 0)
 
@@ -218,6 +219,7 @@ export function useMQTT() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
         distanceHistory,
         currentSnapshotHistory,
+        config: statusData,
         latestData,
         currentSnapshot,
         counter,
@@ -229,7 +231,7 @@ export function useMQTT() {
     } catch (err) {
       console.warn('Failed to persist local dashboard state:', err)
     }
-  }, [distanceHistory, currentSnapshotHistory, latestData, currentSnapshot, counter, eventTimes, mqttLog, lastDataTime, sensorActivity])
+  }, [distanceHistory, currentSnapshotHistory, statusData, latestData, currentSnapshot, counter, eventTimes, mqttLog, lastDataTime, sensorActivity])
 
   useEffect(() => {
     const clientId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -255,7 +257,9 @@ export function useMQTT() {
           TOPIC_DERIVED_DISTANCE_STATUS,
           TOPIC_DERIVED_VOLTAGE_STATUS,
           TOPIC_DERIVED_ITEM_COUNT,
+          TOPIC_CONFIG,
           TOPIC_CONFIG_ACK,
+          TOPIC_DISTANCE_CONFIG,
           TOPIC_DISTANCE,
           TOPIC_VOLTAGE,
           TOPIC_HEALTH,
@@ -372,6 +376,18 @@ export function useMQTT() {
           voltageSmoothingWindow: coerceFiniteNumber(voltage.smoothing_window, configRef.current.voltageSmoothingWindow),
           voltageOfflineTimeoutSec: coerceFiniteNumber(voltage.offline_timeout_sec, configRef.current.voltageOfflineTimeoutSec),
           preferSensor: coerceString(fusion.prefer_sensor, configRef.current.preferSensor),
+        }
+        configRef.current = next
+        setStatusData(next)
+      }
+
+      const patchConfigFromDistanceDevice = (sourceData) => {
+        if (!isPlainObject(sourceData)) return
+        const next = {
+          ...configRef.current,
+          running: coerceBoolean(sourceData.running, configRef.current.running),
+          sampleHz: coerceFiniteNumber(sourceData.sampleHz, sourceData.sample_hz, configRef.current.sampleHz),
+          heartbeatSec: coerceFiniteNumber(sourceData.heartbeatSec, sourceData.heartbeat_sec, configRef.current.heartbeatSec),
         }
         configRef.current = next
         setStatusData(next)
@@ -498,6 +514,12 @@ export function useMQTT() {
             }
           }
 
+        } else if (topic === TOPIC_CONFIG) {
+          patchConfigFromBridge(data)
+
+        } else if (topic === TOPIC_DISTANCE_CONFIG) {
+          patchConfigFromDistanceDevice(data)
+
         } else if (topic === TOPIC_CONFIG_ACK) {
           setConfigAck(isPlainObject(data) ? { ...data, receivedAt: now } : { value: data, receivedAt: now })
           patchConfigFromBridge(data)
@@ -601,6 +623,7 @@ export function useMQTT() {
 
   const updateRuntimeConfig = useCallback((next) => {
     configRef.current = { ...configRef.current, ...next }
+    setStatusData(configRef.current)
   }, [])
 
   const resetCounter = useCallback(() => {

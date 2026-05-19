@@ -19,7 +19,10 @@ const DEFAULTS = {
 }
 
 export function useDeviceConfig(statusData, publish, updateRuntimeConfig) {
-  const [config, setConfig] = useState(DEFAULTS)
+  const [config, setConfig] = useState(() => ({
+    ...DEFAULTS,
+    ...(statusData ?? {}),
+  }))
 
   // Mirror low-frequency config status reported by ESP32.
   useEffect(() => {
