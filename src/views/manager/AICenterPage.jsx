@@ -13,6 +13,13 @@ const ACCURACY_ROWS = [
   { label: 'Error Detection', pct: 76, delta: '+12%', trend: 'up' },
 ]
 
+const MODEL_INFO = [
+  { label: 'Model Type', value: 'Rule-based + Heuristic' },
+  { label: 'Input', value: 'Distance + Timing' },
+  { label: 'Latency', value: '< 50ms' },
+  { label: 'Last Updated', value: 'This session' },
+]
+
 function dotClassForPred(pred) {
   if (pred === 'JAM') return 'warn'
   if (pred === 'ERROR' || pred === 'MACHINE_ABNORMAL' || pred === 'CONNECTION_LOST') return 'danger'
@@ -39,7 +46,22 @@ export default function AICenterPage() {
   const corrections = alerts.filter(a => a.state === 'wrong').length
   const pending = alerts.filter(a => a.state === 'pending').length
 
+  const displayTotal = totalFeedback > 0 ? totalFeedback : '—'
+  const displayConfirmed = confirmed > 0 ? confirmed : '—'
+  const displayCorrections = corrections > 0 ? corrections : '—'
   const recentEntries = entries.slice(0, 20)
+  const timelineItems = recentEntries.map((entry) => ({
+    id: entry.id,
+    time: formatHHMM(entry.time),
+    dot: dotClassForPred(entry.aiPrediction),
+    event: entry.event,
+    badge: predBadge(entry.aiPrediction),
+    fb: entry.operatorFeedback
+      ? entry.operatorFeedback.type === 'confirm'
+        ? '✓ Confirmed'
+        : `✗ ${entry.operatorFeedback.label}`
+      : null,
+  }))
 
   return (
     <div className="aic">
