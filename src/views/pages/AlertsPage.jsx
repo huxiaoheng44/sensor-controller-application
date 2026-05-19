@@ -26,25 +26,6 @@ function AlertCard({ alert, onConfirm, onWrong }) {
   const [mode, setMode] = useState(null) // null | 'wrong-form'
   const [reason, setReason] = useState(WRONG_REASONS[0])
   const [desc, setDesc] = useState('')
-  const [done, setDone] = useState(null) // null | 'confirmed' | 'wrong'
-
-  if (done === 'confirmed') {
-    return (
-      <div className="al-card al-card--done">
-        <span className="al-done-icon">✓</span>
-        <span className="al-done-text">Feedback recorded</span>
-      </div>
-    )
-  }
-
-  if (done === 'wrong') {
-    return (
-      <div className="al-card al-card--done al-card--wrong-done">
-        <span className="al-done-icon">✓</span>
-        <span className="al-done-text">Thanks — AI model updated</span>
-      </div>
-    )
-  }
 
   const color = STATUS_COLORS[alert.status] ?? '#475569'
 
@@ -73,7 +54,7 @@ function AlertCard({ alert, onConfirm, onWrong }) {
         <div className="al-card-actions">
           <button
             className="al-btn al-btn--confirm"
-            onClick={() => { onConfirm(alert.id); setDone('confirmed') }}
+            onClick={() => onConfirm(alert.id)}
           >
             ✓ Confirm
           </button>
@@ -118,7 +99,6 @@ function AlertCard({ alert, onConfirm, onWrong }) {
               className="al-btn al-btn--submit"
               onClick={() => {
                 onWrong(alert.id, { reason, description: desc })
-                setDone('wrong')
               }}
             >
               Submit Feedback

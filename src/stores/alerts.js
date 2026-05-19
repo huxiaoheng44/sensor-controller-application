@@ -9,8 +9,10 @@ const ALERT_QUESTIONS = {
   SENSOR_OFFLINE: 'Sensor offline?',
 }
 const WRONG_REASONS = ['No material', 'Cleaning', 'Maintenance', 'Sensor issue', 'Unknown']
+const ACK_SUPPRESSION_MS = 5 * 60 * 1000
 
 let alerts = []
+let acknowledgedUntilByStatus = {}
 const listeners = new Set()
 
 function notify() { listeners.forEach(fn => fn([...alerts])) }
@@ -22,6 +24,7 @@ export function processSnapshot(snapshot) {
   const status = String(snapshot.status).toUpperCase()
   const { confidence, source, jam_duration_sec, warnings } = snapshot
   if (!ALERT_STATUSES.has(status)) return
+  if ((acknowledgedUntilByStatus[status] ?? 0) > Date.now()) return
   // Deduplicate: don't add if latest pending alert has same status
   const latestPending = alerts.find(a => a.state === 'pending')
   if (latestPending?.status === status) return
@@ -42,12 +45,26 @@ export function processSnapshot(snapshot) {
 }
 
 export function confirmAlert(id) {
+  const alert = alerts.find(a => a.id === id)
+  if (alert?.status) {
+    acknowledgedUntilByStatus = {
+      ...acknowledgedUntilByStatus,
+      [alert.status]: Date.now() + ACK_SUPPRESSION_MS,
+    }
+  }
   alerts = alerts.map(a => a.id === id ? { ...a, state: 'confirmed' } : a)
   notify()
   import('./activityLog.js').then(m => m.updateEntry(id, { operatorFeedback: { type: 'confirm', label: 'Confirmed' } }))
 }
 
 export function wrongAlert(id, feedback) {
+  const alert = alerts.find(a => a.id === id)
+  if (alert?.status) {
+    acknowledgedUntilByStatus = {
+      ...acknowledgedUntilByStatus,
+      [alert.status]: Date.now() + ACK_SUPPRESSION_MS,
+    }
+  }
   alerts = alerts.map(a => a.id === id ? { ...a, state: 'wrong', feedback } : a)
   notify()
   import('./activityLog.js').then(m => m.updateEntry(id, { operatorFeedback: { type: 'wrong', label: `Wrong → ${feedback.reason}` } }))
